@@ -45,7 +45,7 @@ OPENCL_OPERATIONS = Template("""
                            const ${dorf} stepsize) {
         int gid = get_global_id(0);
 
-        factor[gid] = c${dorf}_exp(stepsize * factor[gid]);
+        factor[gid] = c${dorf}_exp(c${dorf}_mulr(factor[gid], stepsize));
     }
 
     __kernel void cl_linear_cached(__global c${dorf}_t* field,
@@ -63,7 +63,7 @@ OPENCL_OPERATIONS = Template("""
         // IMPORTANT: Cannot just multiply two complex numbers!
         // Must use the appropriate function (e.g. cfloat_mul).
         field[gid] = c${dorf}_mul(field[gid],
-                                  c${dorf}_exp(stepsize * factor[gid]));
+                                  c${dorf}_exp(c${dorf}_mulr(factor[gid], stepsize)));
     }
 
     c${dorf}_t cl_square_abs(const c${dorf}_t element) {
@@ -75,7 +75,7 @@ OPENCL_OPERATIONS = Template("""
                                const ${dorf} stepsize) {
         int gid = get_global_id(0);
 
-        const c${dorf}_t im_gamma = (c${dorf}_t)(0.0, stepsize * gamma);
+        const c${dorf}_t im_gamma = {0.0, stepsize * gamma};
 
         field[gid] = c${dorf}_mul(
             field[gid], c${dorf}_mul(im_gamma, cl_square_abs(field[gid])));
@@ -87,8 +87,8 @@ OPENCL_OPERATIONS = Template("""
                          const ${dorf} second_factor) {
         int gid = get_global_id(0);
 
-        first_field[gid] *= first_factor;
-        first_field[gid] += (second_factor * second_field[gid]);
+        first_field[gid] = c${dorf}_mulr(first_field[gid], first_factor);
+        first_field[gid] = c${dorf}_add(first_field[gid], c${dorf}_mulr(second_field[gid], second_factor));
     }
 
     __kernel void cl_copy(__global c${dorf}_t* first_field,
