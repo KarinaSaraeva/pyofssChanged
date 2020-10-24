@@ -105,7 +105,7 @@ class OpenclFibre(object):
     This optical module is similar to Fibre, but uses PyOpenCl (Python
     bindings around OpenCL) to generate parallelised code.
     """
-    def __init__(self, total_samples, dorf, length=None, total_steps=None,
+    def __init__(self, total_samples, dorf, ndev = None, length=None, total_steps=None,
                  name="ocl_fibre"):
         self.name = name
 
@@ -113,6 +113,7 @@ class OpenclFibre(object):
         self.np_float = None
         self.np_complex = None
         self.prg = None
+        self.ndev = ndev
         self.cl_initialise(dorf)
 
         self.plan = Plan(total_samples, queue=self.queue)
@@ -174,8 +175,13 @@ class OpenclFibre(object):
                 compiler_options = "-cl-mad-enable -cl-fast-relaxed-math"
             else:
                 compiler_options = ""
-
-        ctx = cl.create_some_context(interactive=False)
+        
+        if self.ndev is not None:
+            platform = cl.get_platforms()[0]
+            device = platform.get_devices()[self.ndev]
+            ctx = cl.Context([device])
+        else:
+            ctx = cl.create_some_context(interactive=False)
         self.queue = cl.CommandQueue(ctx)
 
         substitutions = {"dorf": dorf}
@@ -292,7 +298,7 @@ if __name__ == "__main__":
 
     import time
 
-    TS = 4096
+    TS = 4096*4
     GAMMA = 100.0
     STEPS = 800
     LENGTH = 0.1
