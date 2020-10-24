@@ -188,7 +188,7 @@ class OpenclFibre(object):
             device = platform.get_devices()[self.ndev]
             ctx = cl.Context([device])
         else:
-            ctx = cl.create_some_context(interactive=False)
+            ctx = cl.create_some_context()
         self.queue = cl.CommandQueue(ctx)
 
         substitutions = {"dorf": dorf}
@@ -214,6 +214,8 @@ class OpenclFibre(object):
                 print("Memory: ", device.global_mem_size // (1024 ** 2), "MB")
                 print("Max clock speed: ", device.max_clock_frequency, "MHz")
                 print("Compute units: ", device.max_compute_units)
+                print "Single precision FP cap: ", device.single_fp_config
+                print "Double precision FP cap: ", device.double_fp_config
 
             print("=" * 60)
 
@@ -301,37 +303,38 @@ class OpenclFibre(object):
 if __name__ == "__main__":
     # Compare simulations using Fibre and OpenclFibre modules.
     from pyofss import Domain, System, Gaussian, Fibre
-    from pyofss import temporal_power, double_plot, labels
+    from pyofss import temporal_power, double_plot, labels, lambda_to_nu
 
     import time
 
-    TS = 4096*4
-    GAMMA = 10.0
+    TS = 4096*16
+    GAMMA = 20.0
+    BETA = [0.0, 0.0, 0.0, 22.0]
     STEPS = 800
     LENGTH = 0.1
 
-    DOMAIN = Domain(bit_width=30.0, samples_per_bit=TS)
+    DOMAIN = Domain(bit_width=50.0, samples_per_bit=TS, centre_nu=lambda_to_nu(1050.0))
 
     SYS = System(DOMAIN)
     SYS.add(Gaussian("gaussian", peak_power=1.0, width=1.0))
-    SYS.add(Fibre("fibre", beta=[0.0, 0.0, 0.0, 22.0], gamma=GAMMA,
+    SYS.add(Fibre("fibre", beta=BETA, gamma=GAMMA,
                   length=LENGTH, total_steps=STEPS, method="RK4IP"))
 
-    start = time.clock()
+    start = time.time()
     SYS.run()
-    stop = time.clock()
-    NO_OCL_DURATION = (stop - start) / 1000.0
+    stop = time.time()
+    NO_OCL_DURATION = (stop - start)
     NO_OCL_OUT = SYS.fields["fibre"]
 
     sys = System(DOMAIN)
     sys.add(Gaussian("gaussian", peak_power=1.0, width=1.0))
-    sys.add(OpenclFibre(TS, beta=[0.0, 0.0, 0.0, 22.0], gamma=GAMMA,
+    sys.add(OpenclFibre(TS, beta=BETA, gamma=GAMMA,
                         dorf="float", length=LENGTH, total_steps=STEPS))
 
-    start = time.clock()
+    start = time.time()
     sys.run()
-    stop = time.clock()
-    OCL_DURATION = (stop - start) / 1000.0
+    stop = time.time()
+    OCL_DURATION = (stop - start)
     OCL_OUT = sys.fields["ocl_fibre"]
 
     NO_OCL_POWER = temporal_power(NO_OCL_OUT)
@@ -340,10 +343,14 @@ if __name__ == "__main__":
 
     MEAN_RELATIVE_ERROR = np.mean(np.abs(DELTA_POWER))
     MEAN_RELATIVE_ERROR /= np.amax(temporal_power(NO_OCL_OUT))
+    
+    MAX_RELATIVE_ERROR = np.max(np.abs(DELTA_POWER))
+    MAX_RELATIVE_ERROR /= np.max(temporal_power(NO_OCL_OUT))
 
     print("Run time without OpenCL: %e" % NO_OCL_DURATION)
     print("Run time with OpenCL: %e" % OCL_DURATION)
     print("Mean relative error: %e" % MEAN_RELATIVE_ERROR)
+    print("Max relative error: %e" % MAX_RELATIVE_ERROR)
 
     # Expect both plots to appear identical:
     double_plot(SYS.domain.t, NO_OCL_POWER, SYS.domain.t, OCL_POWER,
