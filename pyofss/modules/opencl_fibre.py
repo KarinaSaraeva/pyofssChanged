@@ -105,10 +105,15 @@ class OpenclFibre(object):
     This optical module is similar to Fibre, but uses PyOpenCl (Python
     bindings around OpenCL) to generate parallelised code.
     """
-    def __init__(self, total_samples, dorf, ndev = None, length=None, total_steps=None,
+    def __init__(self, total_samples, dorf,
+                 beta = [0.0, 0.0, 0.0, 1.0], gamma = 0.0,
+                 ndev = None, length=None, total_steps=None,
                  name="ocl_fibre"):
         self.name = name
-
+        
+        self.gamma = gamma
+        self.beta = beta
+        
         self.queue = None
         self.np_float = None
         self.np_complex = None
@@ -141,7 +146,7 @@ class OpenclFibre(object):
         field_interaction = np.empty_like(field)
 
         from pyofss.modules.linearity import Linearity
-        dispersion = Linearity(beta=[0.0, 0.0, 0.0, 1.0], sim_type="default")
+        dispersion = Linearity(beta=self.beta, sim_type="default")
         factor = dispersion(domain)
 
         self.send_arrays_to_device(
@@ -250,10 +255,10 @@ class OpenclFibre(object):
                                   field_buffer.data, factor_buffer.data)
         self.plan.execute(field_buffer.data)
 
-    def cl_nonlinear(self, field_buffer, stepsize, gamma=100.0):
+    def cl_nonlinear(self, field_buffer, stepsize):
         """ Nonlinear part of step. """
         self.prg.cl_nonlinear(self.queue, self.shape, None, field_buffer.data,
-                              self.np_float(gamma), self.np_float(stepsize))
+                              self.np_float(self.gamma), self.np_float(stepsize))
 
     def cl_sum(self, first_buffer, first_factor, second_buffer, second_factor):
         """ Calculate weighted summation. """
@@ -299,7 +304,7 @@ if __name__ == "__main__":
     import time
 
     TS = 4096*4
-    GAMMA = 100.0
+    GAMMA = 10.0
     STEPS = 800
     LENGTH = 0.1
 
@@ -307,7 +312,7 @@ if __name__ == "__main__":
 
     SYS = System(DOMAIN)
     SYS.add(Gaussian("gaussian", peak_power=1.0, width=1.0))
-    SYS.add(Fibre("fibre", beta=[0.0, 0.0, 0.0, 1.0], gamma=GAMMA,
+    SYS.add(Fibre("fibre", beta=[0.0, 0.0, 0.0, 22.0], gamma=GAMMA,
                   length=LENGTH, total_steps=STEPS, method="RK4IP"))
 
     start = time.clock()
@@ -318,7 +323,8 @@ if __name__ == "__main__":
 
     sys = System(DOMAIN)
     sys.add(Gaussian("gaussian", peak_power=1.0, width=1.0))
-    sys.add(OpenclFibre(TS, dorf="float", length=LENGTH, total_steps=STEPS))
+    sys.add(OpenclFibre(TS, beta=[0.0, 0.0, 0.0, 22.0], gamma=GAMMA,
+                        dorf="float", length=LENGTH, total_steps=STEPS))
 
     start = time.clock()
     sys.run()
