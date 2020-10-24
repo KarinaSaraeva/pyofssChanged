@@ -106,13 +106,14 @@ class OpenclFibre(object):
     bindings around OpenCL) to generate parallelised code.
     """
     def __init__(self, total_samples, dorf,
-                 beta = [0.0, 0.0, 0.0, 1.0], gamma = 0.0,
+                 beta = [0.0, 0.0, 0.0, 1.0], gamma = 0.0, alpha = None,
                  ndev = None, length=None, total_steps=None,
                  name="ocl_fibre"):
         self.name = name
         
         self.gamma = gamma
         self.beta = beta
+        self.alpha = alpha
         
         self.queue = None
         self.np_float = None
@@ -146,7 +147,8 @@ class OpenclFibre(object):
         field_interaction = np.empty_like(field)
 
         from pyofss.modules.linearity import Linearity
-        dispersion = Linearity(beta=self.beta, sim_type="default")
+        dispersion = Linearity(alpha = self.alpha, beta=self.beta, 
+                               sim_type="default")
         factor = dispersion(domain)
 
         self.send_arrays_to_device(
