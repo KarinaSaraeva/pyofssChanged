@@ -75,7 +75,7 @@ OPENCL_OPERATIONS = Template("""
                                const ${dorf} stepsize) {
         int gid = get_global_id(0);
 
-        const c${dorf}_t im_gamma = {0.0, stepsize * gamma};
+        const c${dorf}_t im_gamma = {(${dorf})0.0f, stepsize * gamma};
 
         field[gid] = c${dorf}_mul(
             field[gid], c${dorf}_mul(im_gamma, cl_square_abs(field[gid])));
@@ -91,11 +91,11 @@ OPENCL_OPERATIONS = Template("""
         first_field[gid] = c${dorf}_add(first_field[gid], c${dorf}_mulr(second_field[gid], second_factor));
     }
 
-    __kernel void cl_copy(__global c${dorf}_t* first_field,
-                          __global c${dorf}_t* second_field) {
+    __kernel void cl_copy(__global c${dorf}_t* dst_field,
+                          __global c${dorf}_t* src_field) {
         int gid = get_global_id(0);
 
-        first_field[gid] = second_field[gid];
+        dst_field[gid] = src_field[gid];
     }
 """)
 
@@ -108,12 +108,13 @@ class OpenclFibre(object):
     def __init__(self, total_samples, dorf,
                  beta = [0.0, 0.0, 0.0, 1.0], gamma = 0.0, alpha = None,
                  ndev = None, length=None, total_steps=None,
-                 name="ocl_fibre"):
+                 name="ocl_fibre", centre_omega=None):
         self.name = name
         
         self.gamma = gamma
         self.beta = beta
         self.alpha = alpha
+        self.centre_omega = centre_omega
         
         self.queue = None
         self.np_float = None
@@ -122,7 +123,7 @@ class OpenclFibre(object):
         self.ndev = ndev
         self.cl_initialise(dorf)
 
-        self.plan = Plan(total_samples, queue=self.queue)
+        self.plan = Plan(total_samples, queue=self.queue, dtype=self.np_complex)
 
         self.buf_field = None
         self.buf_temp = None
@@ -141,15 +142,16 @@ class OpenclFibre(object):
 
     def __call__(self, domain, field):
         # Setup plan for calculating fast Fourier transforms:
-        self.plan = Plan(domain.total_samples, queue=self.queue)
+        self.plan = Plan(domain.total_samples, queue=self.queue, dtype=self.np_complex)
 
         field_temp = np.empty_like(field)
         field_interaction = np.empty_like(field)
 
         from pyofss.modules.linearity import Linearity
-        dispersion = Linearity(alpha = self.alpha, beta=self.beta, 
-                               sim_type="default")
-        factor = dispersion(domain)
+        self.linearity = Linearity(alpha = self.alpha, beta=self.beta, 
+                               sim_type="default", use_cache=True, 
+                               centre_omega=self.centre_omega, phase_lim=True)
+        factor = self.linearity(domain)
 
         self.send_arrays_to_device(
             field, field_temp, field_interaction, factor)
@@ -157,14 +159,9 @@ class OpenclFibre(object):
         stepsize = self.length / self.total_steps
         zs = np.linspace(0.0, self.length, self.total_steps + 1)
 
-        #start = time.clock()
         for z in zs[:-1]:
             self.cl_rk4ip(self.buf_field, self.buf_temp,
                           self.buf_interaction, self.buf_factor, stepsize)
-        #stop = time.clock()
-
-        #cl_result = self.buf_field.get()
-        #print("cl_result: %e" % ((stop - start) / 1000.0))
 
         return self.buf_field.get()
 
@@ -214,8 +211,6 @@ class OpenclFibre(object):
                 print("Memory: ", device.global_mem_size // (1024 ** 2), "MB")
                 print("Max clock speed: ", device.max_clock_frequency, "MHz")
                 print("Compute units: ", device.max_compute_units)
-                print "Single precision FP cap: ", device.single_fp_config
-                print "Double precision FP cap: ", device.double_fp_config
 
             print("=" * 60)
 
@@ -231,13 +226,14 @@ class OpenclFibre(object):
         self.buf_interaction = cl_array.to_device(
             self.queue, field_interaction.astype(self.np_complex))
 
-        self.buf_factor = cl_array.to_device(
-            self.queue, factor.astype(self.np_complex))
+        if self.cached_factor is False:
+            self.buf_factor = cl_array.to_device(
+                self.queue, factor.astype(self.np_complex))
 
-    def cl_copy(self, first_buffer, second_buffer):
+    def cl_copy(self, dst_buffer, src_buffer):
         """ Copy contents of one buffer into another. """
         self.prg.cl_copy(self.queue, self.shape, None,
-                         first_buffer.data, second_buffer.data)
+                         dst_buffer.data, src_buffer.data)
 
     def cl_linear(self, field_buffer, stepsize, factor_buffer):
         """ Linear part of step. """
@@ -249,14 +245,14 @@ class OpenclFibre(object):
     def cl_linear_cached(self, field_buffer, stepsize, factor_buffer):
         """ Linear part of step (cached version). """
         if (self.cached_factor is False):
-            print("Caching factor")
-            self.prg.cl_cache(self.queue, self.shape, None,
-                              factor_buffer.data, self.np_float(stepsize))
+            self.linearity.cache(stepsize)
+            self.buf_factor = cl_array.to_device(
+                self.queue, self.linearity.cached_factor.astype(self.np_complex))
             self.cached_factor = True
 
         self.plan.execute(field_buffer.data, inverse=True)
         self.prg.cl_linear_cached(self.queue, self.shape, None,
-                                  field_buffer.data, factor_buffer.data)
+                                  field_buffer.data, self.buf_factor.data)
         self.plan.execute(field_buffer.data)
 
     def cl_nonlinear(self, field_buffer, stepsize):
