@@ -114,7 +114,7 @@ class Linearity(object):
     Dispersion is used by fibre to generate a fairly general dispersion array.
     """
     def __init__(self, alpha=None, beta=None, sim_type=None,
-                 use_cache=False, centre_omega=None, phase_lim=True):
+                 use_cache=False, centre_omega=None, phase_lim=False):
 
         self.alpha = alpha
         self.beta = beta
