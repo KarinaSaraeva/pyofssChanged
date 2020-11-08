@@ -74,9 +74,9 @@ class Gaussian(object):
             raise OutOfRangeError(
                 "peak_power is out of range. Must be in [0.0, 1e9)")
 
-        if not (-100.0 < offset_nu < 100.0):
+        if not (-300.0 < offset_nu < 300.0):
             raise OutOfRangeError(
-                "offset_nu is out of range. Must be in (-100.0, 100.0)")
+                "offset_nu is out of range. Must be in (-300.0, 300.0)")
 
         if not (0 < m < 50):
             raise OutOfRangeError(
