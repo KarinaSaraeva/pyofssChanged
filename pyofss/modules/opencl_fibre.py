@@ -80,6 +80,19 @@ OPENCL_OPERATIONS = Template("""
         field[gid] = c${dorf}_mul(
             field[gid], c${dorf}_mul(im_gamma, cl_square_abs(field[gid])));
     }
+    
+    __kernel void cl_nonlinear_exp(__global c${dorf}_t* fieldA,
+                               const __global c${dorf}_t* fieldB,
+                               const ${dorf} gamma,
+                               const ${dorf} stepsize) {
+        int gid = get_global_id(0);
+
+        const c${dorf}_t im_gamma = {(${dorf})0.0f, stepsize * gamma};
+
+        fieldA[gid] = c${dorf}_mul(
+            fieldB[gid], c${dorf}_exp(
+                c${dorf}_mul(im_gamma, cl_square_abs(fieldA[gid]))));
+    }
 
     __kernel void cl_sum(__global c${dorf}_t* first_field,
                          const ${dorf} first_factor,
@@ -123,7 +136,7 @@ class OpenclFibre(object):
         self.ndev = ndev
         self.cl_initialise(dorf)
 
-        self.plan = Plan(total_samples, queue=self.queue, dtype=self.np_complex)
+        self.plan = Plan(total_samples, queue=self.queue, dtype=self.np_complex, fast_math=False)
 
         self.buf_field = None
         self.buf_temp = None
@@ -142,7 +155,7 @@ class OpenclFibre(object):
 
     def __call__(self, domain, field):
         # Setup plan for calculating fast Fourier transforms:
-        self.plan = Plan(domain.total_samples, queue=self.queue, dtype=self.np_complex)
+        self.plan = Plan(domain.total_samples, queue=self.queue, dtype=self.np_complex, fast_math=False)
 
         field_temp = np.empty_like(field)
         field_interaction = np.empty_like(field)
@@ -160,6 +173,7 @@ class OpenclFibre(object):
         zs = np.linspace(0.0, self.length, self.total_steps + 1)
 
         for z in zs[:-1]:
+            #self.cl_ss_symmetric(self.buf_field, self.buf_temp,
             self.cl_rk4ip(self.buf_field, self.buf_temp,
                           self.buf_interaction, self.buf_factor, stepsize)
 
@@ -255,9 +269,14 @@ class OpenclFibre(object):
                                   field_buffer.data, self.buf_factor.data)
         self.plan.execute(field_buffer.data)
 
-    def cl_nonlinear(self, field_buffer, stepsize):
+    def cl_n(self, field_buffer, stepsize):
         """ Nonlinear part of step. """
         self.prg.cl_nonlinear(self.queue, self.shape, None, field_buffer.data,
+                              self.np_float(self.gamma), self.np_float(stepsize))
+    
+    def cl_nonlinear(self, fieldA_buffer, stepsize, fieldB_buffer):
+        """ Nonlinear part of step, exponential term"""
+        self.prg.cl_nonlinear_exp(self.queue, self.shape, None, fieldA_buffer.data, fieldB_buffer.data,
                               self.np_float(self.gamma), self.np_float(stepsize))
 
     def cl_sum(self, first_buffer, first_factor, second_buffer, second_factor):
@@ -265,7 +284,17 @@ class OpenclFibre(object):
         self.prg.cl_sum(self.queue, self.shape, None,
                         first_buffer.data, self.np_float(first_factor),
                         second_buffer.data, self.np_float(second_factor))
+    
+    def cl_ss_symmetric(self, field, field_temp, field_interaction, factor, stepsize):
+        """ Symmetric split-step method using OpenCL"""
+        half_step = 0.5 * stepsize
+        
+        self.cl_copy(field_temp, field)
 
+        self.cl_linear(field_temp, half_step, factor)
+        self.cl_nonlinear(field, stepsize, field_temp)
+        self.cl_linear(field, half_step, factor)
+        
     def cl_rk4ip(self, field, field_temp, field_interaction, factor, stepsize):
         """ Runge-Kutta in the interaction picture method using OpenCL. """
         inv_six = 1.0 / 6.0
@@ -276,23 +305,23 @@ class OpenclFibre(object):
         self.cl_linear(field, half_step, factor)
 
         self.cl_copy(field_interaction, field)
-        self.cl_nonlinear(field_temp, stepsize)
+        self.cl_n(field_temp, stepsize)
         self.cl_linear(field_temp, half_step, factor)
 
         self.cl_sum(field, 1.0, field_temp, inv_six)
         self.cl_sum(field_temp, 0.5, field_interaction, 1.0)
-        self.cl_nonlinear(field_temp, stepsize)
+        self.cl_n(field_temp, stepsize)
 
         self.cl_sum(field, 1.0, field_temp, inv_three)
         self.cl_sum(field_temp, 0.5, field_interaction, 1.0)
-        self.cl_nonlinear(field_temp, stepsize)
+        self.cl_n(field_temp, stepsize)
 
         self.cl_sum(field, 1.0, field_temp, inv_three)
         self.cl_sum(field_temp, 1.0, field_interaction, 1.0)
         self.cl_linear(field_interaction, half_step, factor)
 
         self.cl_linear(field, half_step, factor)
-        self.cl_nonlinear(field_temp, stepsize)
+        self.cl_n(field_temp, stepsize)
 
         self.cl_sum(field, 1.0, field_temp, inv_six)
 
@@ -338,7 +367,7 @@ if __name__ == "__main__":
     DELTA_POWER = NO_OCL_POWER - OCL_POWER
 
     MEAN_RELATIVE_ERROR = np.mean(np.abs(DELTA_POWER))
-    MEAN_RELATIVE_ERROR /= np.amax(temporal_power(NO_OCL_OUT))
+    MEAN_RELATIVE_ERROR /= np.max(temporal_power(NO_OCL_OUT))
     
     MAX_RELATIVE_ERROR = np.max(np.abs(DELTA_POWER))
     MAX_RELATIVE_ERROR /= np.max(temporal_power(NO_OCL_OUT))
@@ -352,3 +381,4 @@ if __name__ == "__main__":
     double_plot(SYS.domain.t, NO_OCL_POWER, SYS.domain.t, OCL_POWER,
                 x_label=labels["t"], y_label=labels["P_t"],
                 X_label=labels["t"], Y_label=labels["P_t"])
+
