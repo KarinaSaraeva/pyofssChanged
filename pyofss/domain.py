@@ -172,9 +172,9 @@ class Domain(object):
             raise OutOfRangeError(
                 "bit_width is out of range. Must be in (0.01, 10000.0)")
 
-        if not (185.0 < centre_nu < 400.0):
+        if not (185.0 < centre_nu < 600.0):
             raise OutOfRangeError(
-                "centre_nu is out of range. Must be in (185.0, 400.0)")
+                "centre_nu is out of range. Must be in (185.0, 600.0)")
 
         if not (0 < channels < 3):
             raise OutOfRangeError(
