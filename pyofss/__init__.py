@@ -48,7 +48,7 @@ from .modules.delay import Delay
 from .modules.static_pump_wdm import StaticPumpWDM
 
 try:
-    from modules.opencl_fibre import OpenclFibre
+    from .modules.opencl_fibre import OpenclFibre
 except ImportError:
     pass
 

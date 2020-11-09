@@ -23,9 +23,12 @@ import numpy as np
 import pyopencl as cl
 import pyopencl.array as cl_array
 
-# TODO use Reikna.fft for py3
-# see e.g. https://programtalk.com/python-examples/reikna.fft.FFT/
-from pyfft.cl import Plan  
+import sys
+if sys.version_info[0] == 3:
+    from reikna import cluda
+    from reikna.fft import FFT
+else:
+    from pyfft.cl import Plan  
 from string import Template
 
 
@@ -155,7 +158,12 @@ class OpenclFibre(object):
     def __call__(self, domain, field):
         # Setup plan for calculating fast Fourier transforms:
         if self.plan is None:
-            self.plan = Plan(domain.total_samples, queue=self.queue, dtype=self.np_complex, fast_math=False)
+            if sys.version_info[0] == 3:
+                self.plan = FFT(domain.t.astype(self.np_complex)).compile(self.thr, 
+                        fast_math=False, compiler_options=self.compiler_options)
+                self.plan.execute = self.reikna_fft_execute
+            else:
+                self.plan = Plan(domain.total_samples, queue=self.queue, dtype=self.np_complex, fast_math=False)
 
         field_temp = np.empty_like(field)
         field_interaction = np.empty_like(field)
@@ -190,9 +198,9 @@ class OpenclFibre(object):
         for platform in cl.get_platforms():
             if platform.name == "NVIDIA CUDA":
                 print("Using compiler optimisations suitable for Nvidia GPUs")
-                compiler_options = "-cl-mad-enable -cl-fast-relaxed-math"
+                self.compiler_options = "-cl-mad-enable -cl-fast-relaxed-math"
             else:
-                compiler_options = ""
+                self.compiler_options = ""
         
         if self.ndev is not None:
             platform = cl.get_platforms()[0]
@@ -201,10 +209,13 @@ class OpenclFibre(object):
         else:
             ctx = cl.create_some_context()
         self.queue = cl.CommandQueue(ctx)
+        if sys.version_info[0] == 3:
+            api = cluda.ocl_api()
+            self.thr = api.Thread(self.queue)
 
         substitutions = {"dorf": dorf}
         code = OPENCL_OPERATIONS.substitute(substitutions)
-        self.prg = cl.Program(ctx, code).build(options=compiler_options)
+        self.prg = cl.Program(ctx, code).build(options=self.compiler_options)
 
     @staticmethod
     def print_device_info():
@@ -284,6 +295,9 @@ class OpenclFibre(object):
         self.prg.cl_sum(self.queue, self.shape, None,
                         first_buffer.data, self.np_float(first_factor),
                         second_buffer.data, self.np_float(second_factor))
+
+    def reikna_fft_execute(self, d, inverse=False):
+        self.plan(d,d,inverse=inverse)
     
     def cl_ss_symmetric(self, field, field_temp, field_interaction, factor, stepsize):
         """ Symmetric split-step method using OpenCL"""
