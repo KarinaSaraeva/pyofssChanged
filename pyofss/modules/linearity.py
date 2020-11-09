@@ -218,7 +218,7 @@ class Linearity(object):
                               np.exp(hf1)]
 
     def cache(self, h):
-        print "Caching linear factor"
+        print("Caching linear factor")
         self.generate_cache(h)
 
     def default_f(self, A, z):
