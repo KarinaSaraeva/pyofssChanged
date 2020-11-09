@@ -58,7 +58,7 @@ class Gaussian(object):
     Generates a pulse with a Gaussian profile. A HWIeM pulse width is used
     internally; a FWHM pulse width will be converted on initialisation.
     """
-    def __init__(self, name="gaussian", position=0.5, width=10.0,
+    def __init__(self, name="gaussian", position=0.0, width=10.0,
                  peak_power=1e-3, offset_nu=0.0, m=1, C=0.0,
                  initial_phase=0.0, channel=0, using_fwhm=False):
 
