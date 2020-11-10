@@ -182,7 +182,8 @@ class OpenclFibre(object):
 
         for z in zs[:-1]:
             #self.cl_ss_symmetric(self.buf_field, self.buf_temp,
-            self.cl_rk4ip(self.buf_field, self.buf_temp,
+            #self.cl_rk4ip(self.buf_field, self.buf_temp,
+            self.cl_ss_sym_rk4(self.buf_field, self.buf_temp,
                           self.buf_interaction, self.buf_factor, stepsize)
 
         return self.buf_field.get()
@@ -308,6 +309,59 @@ class OpenclFibre(object):
         self.cl_linear(field_temp, half_step, factor)
         self.cl_nonlinear(field, stepsize, field_temp)
         self.cl_linear(field, half_step, factor)
+    
+    def cl_ss_sym_rk4(self, field, field_t0, field_t1, factor, stepsize):
+        """ Runge-Kutta fourth-order method using OpenCL. """
+
+        '''
+        A_L = f.linear(A, hh)
+        k0 = h * f.n(A_L, z)
+        k1 = h * f.n(A_L + 0.5 * k0, z + hh)
+        k2 = h * f.n(A_L + 0.5 * k1, z + hh)
+        k3 = h * f.n(A_L + k2, z + h)
+
+        A_N =  A_L + (k0 + 2.0 * (k1 + k2) + k3) / 6.0
+
+        return f.linear(A_N, hh)
+        '''
+
+        '''
+        hh = 0.5 * h
+        A_I = f.linear(A, hh)
+        k0 = f.linear(h * f.n(A, z), hh)
+        k1 = h * f.n(A_I + 0.5 * k0, z + hh)
+        k2 = h * f.n(A_I + 0.5 * k1, z + hh)
+        k3 = h * f.n(f.linear(A_I + k2, hh), z + h)
+        return (k3 / 6.0) + f.linear(A_I + (k0 + 2.0 * (k1 + k2)) / 6.0, hh)
+        '''
+
+        inv_six = 1.0 / 6.0
+        inv_three = 1.0 / 3.0
+        half_step = 0.5 * stepsize
+
+        self.cl_linear(field, half_step, factor) #A_L
+
+        self.cl_copy(field_t0, field)
+        self.cl_copy(field_t1, field)
+        self.cl_n(field_t0, stepsize) #k0
+
+        self.cl_sum(field_t1, 1, field_t0, 0.5)
+        self.cl_n(field_t1, stepsize) #k1
+
+        self.cl_sum(field_t0, inv_six, field, 1) #free field
+        self.cl_sum(field_t0, 1, field_t1, inv_three) #free k1
+        
+        self.cl_sum(field_t1, 0.5, field, 1)
+        self.cl_n(field_t1, stepsize) #k2
+        self.cl_sum(field_t0, 1, field_t1, inv_three) #free k2
+        
+        self.cl_sum(field_t1, 1, field, 1)
+        self.cl_n(field_t1, stepsize) #k3
+        self.cl_sum(field_t0, 1, field_t1, inv_six) #free k3
+        
+        self.cl_linear(field_t0, half_step, factor)
+
+        self.cl_copy(field, field_t0) #FIXME
         
     def cl_rk4ip(self, field, field_temp, field_interaction, factor, stepsize):
         """ Runge-Kutta in the interaction picture method using OpenCL. """
