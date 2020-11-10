@@ -182,8 +182,8 @@ class OpenclFibre(object):
 
         for z in zs[:-1]:
             #self.cl_ss_symmetric(self.buf_field, self.buf_temp,
-            #self.cl_rk4ip(self.buf_field, self.buf_temp,
-            self.cl_ss_sym_rk4(self.buf_field, self.buf_temp,
+            self.cl_rk4ip(self.buf_field, self.buf_temp,
+            #self.cl_ss_sym_rk4(self.buf_field, self.buf_temp,
                           self.buf_interaction, self.buf_factor, stepsize)
 
         return self.buf_field.get()
@@ -366,24 +366,24 @@ class OpenclFibre(object):
         self.cl_copy(field_temp, field)
         self.cl_linear(field, half_step, factor)
 
-        self.cl_copy(field_interaction, field)
+        self.cl_copy(field_interaction, field) #A_I
         self.cl_n(field_temp, stepsize)
-        self.cl_linear(field_temp, half_step, factor)
+        self.cl_linear(field_temp, half_step, factor) #k0
 
-        self.cl_sum(field, 1.0, field_temp, inv_six)
+        self.cl_sum(field, 1.0, field_temp, inv_six) #free k0
         self.cl_sum(field_temp, 0.5, field_interaction, 1.0)
-        self.cl_n(field_temp, stepsize)
+        self.cl_n(field_temp, stepsize) #k1
 
-        self.cl_sum(field, 1.0, field_temp, inv_three)
+        self.cl_sum(field, 1.0, field_temp, inv_three) #free k1
         self.cl_sum(field_temp, 0.5, field_interaction, 1.0)
-        self.cl_n(field_temp, stepsize)
+        self.cl_n(field_temp, stepsize) #k2
 
-        self.cl_sum(field, 1.0, field_temp, inv_three)
+        self.cl_sum(field, 1.0, field_temp, inv_three) #free k2
         self.cl_sum(field_temp, 1.0, field_interaction, 1.0)
-        self.cl_linear(field_interaction, half_step, factor)
+        self.cl_linear(field_temp, half_step, factor)
+        self.cl_n(field_temp, stepsize) #k3
 
         self.cl_linear(field, half_step, factor)
-        self.cl_n(field_temp, stepsize)
 
         self.cl_sum(field, 1.0, field_temp, inv_six)
 
