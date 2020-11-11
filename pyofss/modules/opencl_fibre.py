@@ -23,8 +23,9 @@ import numpy as np
 import pyopencl as cl
 import pyopencl.array as cl_array
 
-import sys
-if sys.version_info[0] == 3:
+import sys as sys0
+version_py = sys0.version_info[0]
+if version_py == 3:
     from reikna import cluda
     from reikna.fft import FFT
 else:
@@ -158,7 +159,7 @@ class OpenclFibre(object):
     def __call__(self, domain, field):
         # Setup plan for calculating fast Fourier transforms:
         if self.plan is None:
-            if sys.version_info[0] == 3:
+            if version_py == 3:
                 self.plan = FFT(domain.t.astype(self.np_complex)).compile(self.thr, 
                         fast_math=False, compiler_options=self.compiler_options)
                 self.plan.execute = self.reikna_fft_execute
@@ -210,7 +211,7 @@ class OpenclFibre(object):
         else:
             ctx = cl.create_some_context()
         self.queue = cl.CommandQueue(ctx)
-        if sys.version_info[0] == 3:
+        if version_py == 3:
             api = cluda.ocl_api()
             self.thr = api.Thread(self.queue)
 
@@ -415,7 +416,7 @@ if __name__ == "__main__":
 
     sys = System(DOMAIN)
     sys.add(Gaussian("gaussian", peak_power=1.0, width=1.0))
-    sys.add(OpenclFibre(TS, beta=BETA, gamma=GAMMA,
+    sys.add(OpenclFibre("ocl_fibre", beta=BETA, gamma=GAMMA,
                         dorf="float", length=LENGTH, total_steps=STEPS))
 
     start = time.time()
