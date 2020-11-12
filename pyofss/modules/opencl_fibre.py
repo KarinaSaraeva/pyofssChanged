@@ -128,7 +128,7 @@ class OpenclFibre(object):
     """
     def __init__(self, name="ocl_fibre", length=1.0, alpha = None,
                  beta = None, gamma = 0.0, total_steps=None,
-                 centre_omega=None, dorf='float', ndev = None,
+                 centre_omega=None, dorf='float', ctx = None,
                  method = "cl_rk4ip"):
         self.name = name
         
@@ -141,7 +141,7 @@ class OpenclFibre(object):
         self.np_float = None
         self.np_complex = None
         self.prg = None
-        self.ndev = ndev
+        self.ctx = ctx
         self.cl_initialise(dorf)
 
         self.plan = None
@@ -208,20 +208,17 @@ class OpenclFibre(object):
             else:
                 self.compiler_options = ""
         
-        if self.ndev is not None:
-            platform = cl.get_platforms()[0]
-            device = platform.get_devices()[self.ndev]
-            ctx = cl.Context([device])
-        else:
-            ctx = cl.create_some_context()
-        self.queue = cl.CommandQueue(ctx)
+        if self.ctx is None:
+            self.ctx = cl.create_some_context()
+
+        self.queue = cl.CommandQueue(self.ctx)
         if version_py == 3:
             api = cluda.ocl_api()
             self.thr = api.Thread(self.queue)
 
         substitutions = {"dorf": dorf}
         code = OPENCL_OPERATIONS.substitute(substitutions)
-        self.prg = cl.Program(ctx, code).build(options=self.compiler_options)
+        self.prg = cl.Program(self.ctx, code).build(options=self.compiler_options)
 
     @staticmethod
     def print_device_info():
