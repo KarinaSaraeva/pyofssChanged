@@ -79,7 +79,7 @@ OPENCL_OPERATIONS = Template("""
                                const ${dorf} stepsize) {
         int gid = get_global_id(0);
 
-        const c${dorf}_t im_gamma = {(${dorf})0.0f, stepsize * gamma};
+        const c${dorf}_t im_gamma = c${dorf}_new((${dorf})0.0f, stepsize * gamma);
 
         field[gid] = c${dorf}_mul(
             field[gid], c${dorf}_mul(im_gamma, cl_square_abs(field[gid])));
@@ -91,7 +91,7 @@ OPENCL_OPERATIONS = Template("""
                                const ${dorf} stepsize) {
         int gid = get_global_id(0);
 
-        const c${dorf}_t im_gamma = {(${dorf})0.0f, stepsize * gamma};
+        const c${dorf}_t im_gamma = c${dorf}_new((${dorf})0.0f, stepsize * gamma);
 
         fieldA[gid] = c${dorf}_mul(
             fieldB[gid], c${dorf}_exp(
