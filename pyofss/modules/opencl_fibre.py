@@ -121,10 +121,15 @@ class OpenclFibre(object):
     """
     This optical module is similar to Fibre, but uses PyOpenCl (Python
     bindings around OpenCL) to generate parallelised code.
+    method:
+        * cl_rk4ip
+        * cl_ss_symmetric
+        * cl_ss_sym_rk4
     """
     def __init__(self, name="ocl_fibre", length=1.0, alpha = None,
                  beta = None, gamma = 0.0, total_steps=None,
-                 centre_omega=None, dorf='float', ndev = None):
+                 centre_omega=None, dorf='float', ndev = None,
+                 method = "cl_rk4ip"):
         self.name = name
         
         self.gamma = gamma
@@ -155,6 +160,7 @@ class OpenclFibre(object):
 
         self.length = length
         self.total_steps = total_steps
+        self.method = getattr(self, method.lower())
 
     def __call__(self, domain, field):
         # Setup plan for calculating fast Fourier transforms:
@@ -182,9 +188,7 @@ class OpenclFibre(object):
         zs = np.linspace(0.0, self.length, self.total_steps + 1)
 
         for z in zs[:-1]:
-            #self.cl_ss_symmetric(self.buf_field, self.buf_temp,
-            self.cl_rk4ip(self.buf_field, self.buf_temp,
-            #self.cl_ss_sym_rk4(self.buf_field, self.buf_temp,
+            self.method(self.buf_field, self.buf_temp,
                           self.buf_interaction, self.buf_factor, stepsize)
 
         return self.buf_field.get()
