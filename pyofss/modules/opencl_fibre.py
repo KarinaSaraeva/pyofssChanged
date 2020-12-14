@@ -129,7 +129,7 @@ class OpenclFibre(object):
     def __init__(self, name="ocl_fibre", length=1.0, alpha = None,
                  beta = None, gamma = 0.0, total_steps=None,
                  centre_omega=None, dorf='float', ctx = None,
-                 method = "cl_rk4ip", comp_opt = ""):
+                 method = "cl_rk4ip", comp_opt = False):
         self.name = name
         
         self.gamma = gamma
@@ -161,7 +161,8 @@ class OpenclFibre(object):
         self.length = length
         self.total_steps = total_steps
         self.method = getattr(self, method.lower())
-        self.compiler_options = comp_opt
+        self.use_compiler_options = comp_opt
+        self.compiler_options = None
 
     def __call__(self, domain, field):
         # Setup plan for calculating fast Fourier transforms:
@@ -203,9 +204,9 @@ class OpenclFibre(object):
         self.np_complex = complex_conversions[dorf]
 
         for platform in cl.get_platforms():
-            if platform.name == "NVIDIA CUDA":
+            if platform.name == "NVIDIA CUDA" and self.use_compiler_options is True:
                 print("Using compiler optimisations suitable for Nvidia GPUs")
-                #self.compiler_options = "-cl-mad-enable -cl-fast-relaxed-math"
+                self.compiler_options = "-cl-mad-enable -cl-fast-relaxed-math"
             else:
                 self.compiler_options = ""
         
