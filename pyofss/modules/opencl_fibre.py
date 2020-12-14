@@ -32,17 +32,19 @@ else:
     from pyfft.cl import Plan  
 from string import Template
 
+from .linearity import Linearity
 
 OPENCL_OPERATIONS = Template("""
     #ifdef cl_khr_fp64 // Khronos extension
         #pragma OPENCL EXTENSION cl_khr_fp64 : enable
+        #define PYOPENCL_DEFINE_CDOUBLE
     #elif defined(cl_amd_fp64) // AMD extension
         #pragma OPENCL EXTENSION cl_amd_fp64 : enable
+        #define PYOPENCL_DEFINE_CDOUBLE
     #else
-        #error "Double precision floating point is not supported"
+        #warning "Double precision floating point is not supported"
     #endif
 
-    #define PYOPENCL_DEFINE_CDOUBLE
     #include <pyopencl-complex.h>
 
     __kernel void cl_cache(__global c${dorf}_t* factor,
@@ -107,13 +109,6 @@ OPENCL_OPERATIONS = Template("""
         first_field[gid] = c${dorf}_mulr(first_field[gid], first_factor);
         first_field[gid] = c${dorf}_add(first_field[gid], c${dorf}_mulr(second_field[gid], second_factor));
     }
-
-    __kernel void cl_copy(__global c${dorf}_t* dst_field,
-                          __global c${dorf}_t* src_field) {
-        int gid = get_global_id(0);
-
-        dst_field[gid] = src_field[gid];
-    }
 """)
 
 
@@ -133,9 +128,6 @@ class OpenclFibre(object):
         self.name = name
         
         self.gamma = gamma
-        self.beta = beta
-        self.alpha = alpha
-        self.centre_omega = centre_omega
         
         self.queue = None
         self.np_float = None
@@ -163,6 +155,9 @@ class OpenclFibre(object):
         self.method = getattr(self, method.lower())
         self.fast_math = fast_math
         self.compiler_options = None
+        
+        self.linearity = Linearity(alpha, beta, sim_type="default",
+                                    use_cache=True, centre_omega=centre_omega, phase_lim=True)
 
     def __call__(self, domain, field):
         # Setup plan for calculating fast Fourier transforms:
@@ -174,17 +169,9 @@ class OpenclFibre(object):
             else:
                 self.plan = Plan(domain.total_samples, queue=self.queue, dtype=self.np_complex, fast_math=self.fast_math)
 
-        field_temp = np.empty_like(field)
-        field_interaction = np.empty_like(field)
-
-        from pyofss.modules.linearity import Linearity
-        self.linearity = Linearity(alpha = self.alpha, beta=self.beta, 
-                               sim_type="default", use_cache=True, 
-                               centre_omega=self.centre_omega, phase_lim=True)
         factor = self.linearity(domain)
 
-        self.send_arrays_to_device(
-            field, field_temp, field_interaction, factor)
+        self.send_arrays_to_device(field, factor)
 
         stepsize = self.length / self.total_steps
         zs = np.linspace(0.0, self.length, self.total_steps + 1)
@@ -244,17 +231,17 @@ class OpenclFibre(object):
 
             print("=" * 60)
 
-    def send_arrays_to_device(self, field, field_temp,
-                              field_interaction, factor):
+    def send_arrays_to_device(self, field, factor):
         """ Move numpy arrays onto compute device. """
         self.shape = field.shape
 
         self.buf_field = cl_array.to_device(
             self.queue, field.astype(self.np_complex))
-        self.buf_temp = cl_array.to_device(
-            self.queue, field_temp.astype(self.np_complex))
-        self.buf_interaction = cl_array.to_device(
-            self.queue, field_interaction.astype(self.np_complex))
+
+        if self.buf_temp is None:
+            self.buf_temp = cl_array.empty_like(self.buf_field)
+        if self.buf_interaction is None:
+            self.buf_interaction = cl_array.empty_like(self.buf_field)
 
         if self.cached_factor is False:
             self.buf_factor = cl_array.to_device(
@@ -262,8 +249,7 @@ class OpenclFibre(object):
 
     def cl_copy(self, dst_buffer, src_buffer):
         """ Copy contents of one buffer into another. """
-        self.prg.cl_copy(self.queue, self.shape, None,
-                         dst_buffer.data, src_buffer.data)
+        cl.enqueue_copy(self.queue, dst_buffer.data, src_buffer.data).wait()
 
     def cl_linear(self, field_buffer, stepsize, factor_buffer):
         """ Linear part of step. """
