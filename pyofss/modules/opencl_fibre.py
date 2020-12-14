@@ -129,7 +129,7 @@ class OpenclFibre(object):
     def __init__(self, name="ocl_fibre", length=1.0, alpha = None,
                  beta = None, gamma = 0.0, total_steps=None,
                  centre_omega=None, dorf='float', ctx = None,
-                 method = "cl_rk4ip", comp_opt = False):
+                 method = "cl_rk4ip", fast_math=False):
         self.name = name
         
         self.gamma = gamma
@@ -161,7 +161,7 @@ class OpenclFibre(object):
         self.length = length
         self.total_steps = total_steps
         self.method = getattr(self, method.lower())
-        self.use_compiler_options = comp_opt
+        self.fast_math = fast_math
         self.compiler_options = None
 
     def __call__(self, domain, field):
@@ -169,10 +169,10 @@ class OpenclFibre(object):
         if self.plan is None:
             if version_py == 3:
                 self.plan = FFT(domain.t.astype(self.np_complex)).compile(self.thr, 
-                        fast_math=False, compiler_options=self.compiler_options)
+                        fast_math=self.fast_math, compiler_options=self.compiler_options)
                 self.plan.execute = self.reikna_fft_execute
             else:
-                self.plan = Plan(domain.total_samples, queue=self.queue, dtype=self.np_complex, fast_math=False)
+                self.plan = Plan(domain.total_samples, queue=self.queue, dtype=self.np_complex, fast_math=self.fast_math)
 
         field_temp = np.empty_like(field)
         field_interaction = np.empty_like(field)
@@ -204,7 +204,7 @@ class OpenclFibre(object):
         self.np_complex = complex_conversions[dorf]
 
         for platform in cl.get_platforms():
-            if platform.name == "NVIDIA CUDA" and self.use_compiler_options is True:
+            if platform.name == "NVIDIA CUDA" and self.fast_math is True:
                 print("Using compiler optimisations suitable for Nvidia GPUs")
                 self.compiler_options = "-cl-mad-enable -cl-fast-relaxed-math"
             else:
