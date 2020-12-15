@@ -133,6 +133,8 @@ class OpenclFibre(object):
         self.np_float = None
         self.np_complex = None
         self.prg = None
+        self.compiler_options = None
+        self.fast_math = fast_math
         self.ctx = ctx
         self.cl_initialise(dorf)
 
@@ -153,8 +155,6 @@ class OpenclFibre(object):
         self.length = length
         self.total_steps = total_steps
         self.method = getattr(self, method.lower())
-        self.fast_math = fast_math
-        self.compiler_options = None
         
         self.linearity = Linearity(alpha, beta, sim_type="default",
                                     use_cache=True, centre_omega=centre_omega, phase_lim=True)
