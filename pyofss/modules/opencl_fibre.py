@@ -154,10 +154,15 @@ class OpenclFibre(object):
 
         self.length = length
         self.total_steps = total_steps
+
+        self.stepsize = self.length / self.total_steps
+        self.zs = np.linspace(0.0, self.length, self.total_steps + 1)
+
         self.method = getattr(self, method.lower())
         
         self.linearity = Linearity(alpha, beta, sim_type="default",
                                     use_cache=True, centre_omega=centre_omega, phase_lim=True)
+        self.factor = None
 
     def __call__(self, domain, field):
         # Setup plan for calculating fast Fourier transforms:
@@ -169,16 +174,14 @@ class OpenclFibre(object):
             else:
                 self.plan = Plan(domain.total_samples, queue=self.queue, dtype=self.np_complex, fast_math=self.fast_math)
 
-        factor = self.linearity(domain)
+        if self.factor is None:
+            self.factor = self.linearity(domain)
 
-        self.send_arrays_to_device(field, factor)
+        self.send_arrays_to_device(field, self.factor)
 
-        stepsize = self.length / self.total_steps
-        zs = np.linspace(0.0, self.length, self.total_steps + 1)
-
-        for z in zs[:-1]:
+        for z in self.zs[:-1]:
             self.method(self.buf_field, self.buf_temp,
-                          self.buf_interaction, self.buf_factor, stepsize)
+                          self.buf_interaction, self.buf_factor, self.stepsize)
 
         return self.buf_field.get()
 
