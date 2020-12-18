@@ -57,6 +57,7 @@ from .domain import nu_to_omega, nu_to_lambda
 from .domain import omega_to_nu, omega_to_lambda
 from .domain import lambda_to_nu, lambda_to_omega
 from .domain import dnu_to_dlambda, dlambda_to_dnu
+from .domain import align_with_nu_grid
 
 # Import useful conversions
 from .field import fft, ifft, fftshift, ifftshift
@@ -64,6 +65,8 @@ from .field import temporal_power, spectral_power
 from .field import phase, chirp
 from .field import energy
 from .field import inst_freq
+from .field import loss_infrared_db
+from .field import loss_rayleigh_db
 
 # Import pulse width conversion function
 from .modules.generator import convert_pulse_width

@@ -1,6 +1,6 @@
 
 """
-    Copyright (C) 2011, 2012  David Bolt
+    Copyright (C) 2011, 2012  David Bolt, 2020  Denis Kharenko
 
     This file is part of pyofss.
 
@@ -127,6 +127,17 @@ def dlambda_to_dnu(dlambda, Lambda=1550.0):
     with reference to a centre wavelength
     """
     return Domain.vacuum_light_speed * dlambda / (Lambda ** 2)
+
+
+def align_with_nu_grid(nu, domain):
+    """
+    :param double nu: Frequency to align. *Unit: THz*
+    :return: Aligned Frequency. *Unit: THz*
+    :rtype: double
+
+    Align value with the frequency grid to avoid spectral leakage effect
+    """
+    return int(nu/domain.dnu)*domain.dnu
 
 
 class Domain(object):
