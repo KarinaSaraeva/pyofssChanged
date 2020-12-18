@@ -121,12 +121,12 @@ class OpenclFibre(object):
         * cl_ss_symmetric
         * cl_ss_sym_rk4
     """
-    def __init__(self, name="ocl_fibre", length=1.0, alpha = None,
-                 beta = None, gamma = 0.0, total_steps=None,
-                 centre_omega=None, dorf='float', ctx = None,
-                 method = "cl_rk4ip", fast_math=False):
+    def __init__(self, name="ocl_fibre", length=1.0, alpha=None,
+                 beta=None, gamma=0.0, method="cl_rk4ip", total_steps=100,
+                 centre_omega=None, dorf='float', ctx=None, fast_math=False):
+
         self.name = name
-        
+
         self.gamma = gamma
         
         self.queue = None
