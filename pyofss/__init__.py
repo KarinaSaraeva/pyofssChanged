@@ -45,6 +45,7 @@ from .modules.filter_doubl import Filter_doubl
 from .modules.diss_soliton import Diss_soliton
 from .modules.mirror import Mirror
 from .modules.delay import Delay
+from .modules.dispersion import Dispersion
 from .modules.static_pump_wdm import StaticPumpWDM
 
 # Import helper functions
