@@ -20,6 +20,8 @@
 
 import numpy as np
 from numpy import pi
+from scipy.constants import constants
+import scipy.integrate as integrate
 
 from pyofss.field import fft, ifft, fftshift
 from pyofss.domain import Domain
@@ -58,6 +60,36 @@ def calculate_raman_term(domain, tau_1=12.2e-3, tau_2=32.0e-3):
     h_R *= np.exp(-t / tau_2) * np.sin(t / tau_1)
 
     return h_R
+
+def calculate_raman_term_silica(domain):
+    """
+    :param object domain: A domain
+    :return: Raman response function
+    :rtype: double
+
+    Calculate raman response function according by Multiple-vibrational-mode model [1].
+    The function is normalized such that its integral is unity [2].
+
+    [1] D. Hollenbeck and C. D. Cantrell, JOSA B 19, 2886 (2002) doi: 10.1364/JOSAB.19.002886
+    [2] R. H. Stolen et al, JOSA B 6, 1159 (1989) doi: 10.1364/JOSAB.6.001159
+    """
+    CP = [56.25, 100.00, 231.25, 362.50, 463.00, 497.00, 611.50, 691.67, 793.67, 
+            835.50, 930.00, 1080.00, 1215.00]
+    Ai = [1.00, 11.40, 36.67, 67.67, 74.00, 4.50, 6.80, 4.60, 4.20, 4.50, 2.70, 3.10, 3.00]
+    Gfwhm = [52.10, 110.42, 175.00, 162.50, 135.33, 24.50, 41.50, 155.00, 59.50,
+            64.30, 150.00, 91.00, 160.00]
+    Lfwhm = [17.37, 38.81, 58.33, 54.17, 45.11, 8.17, 13.83, 51.67, 19.83, 21.43, 50.00, 30.33, 53.33]
+
+    t = domain.t - domain.t.min() #shift starting point to zero
+    h_R = np.zeros_like(t)
+    for i in range(13):
+        h_R += Ai[i] * \
+                np.exp(-np.pi * 1e-10 * constants.c * Lfwhm[i] * t) * \
+                np.exp(-(np.pi * 1e-10 * constants.c * Gfwhm[i]) ** 2 * (t ** 2) / 4.) * \
+                np.sin(2 * np.pi * 1e-10 * constants.c * CP[i] * t)
+
+    norm = integrate.simps(h_R, domain.t)
+    return h_R/norm
 
 
 class Nonlinearity(object):
@@ -129,8 +161,9 @@ class Nonlinearity(object):
 
         if self.use_all:
             # Require h_R in spectral domain, so take FFT of returned value:
-            self.h_R = fft(calculate_raman_term(
-                domain, self.tau_1, self.tau_2))
+            #self.h_R = fft(calculate_raman_term(
+            #    domain, self.tau_1, self.tau_2))
+            self.h_R = fft(calculate_raman_term_silica(domain))
         else:
             self.h_R = 0.0
 
