@@ -1,6 +1,6 @@
 
 """
-    Copyright (C) 2012  David Bolt
+    Copyright (C) 2012  David Bolt, 2021-2022 Denis Kharenko
 
     This file is part of pyofss.
 
@@ -26,6 +26,11 @@ import scipy.integrate as integrate
 from pyofss.field import fft, ifft, fftshift
 from pyofss.domain import Domain
 
+class NonlinearityError(Exception):
+    pass
+
+class UnknownRamanResponseError(NonlinearityError):
+    pass
 
 def calculate_gamma(nonlinear_index, effective_area,
                     centre_omega=2.0 * pi * 193.1):
@@ -53,7 +58,9 @@ def calculate_raman_term(domain, tau_1=12.2e-3, tau_2=32.0e-3):
     :return: Raman response function
     :rtype: double
 
-    Calculate raman response function from tau_1 and tau_2.
+    Calculate raman response function from tau_1 and tau_2 [1].
+
+    [1] K. J. Blow and D. Wood, IEEE JQE 25, 2665 (1989) doi: 10.1109/3.40655
     """
     t = domain.t - domain.t.min() #shift starting point to zero
     h_R = (tau_2 ** 2 + tau_1 ** 2) / (tau_1 * tau_2 ** 2)
@@ -154,18 +161,28 @@ class Nonlinearity(object):
         self.centre_omega = domain.centre_omega
         self.omega = fftshift(domain.omega - domain.centre_omega)
 
-        if self.self_steepening:
+        if self.self_steepening is False:
+            self.ss_factor = 0.0
+        elif self.self_steepening is True:
             self.ss_factor = 1.0 / self.centre_omega
         else:
-            self.ss_factor = 0.0
+            self.ss_factor = float(self.self_steepening)
 
-        if self.use_all:
+        if self.use_all is False:
+            self.h_R = 0.0
+        elif self.use_all is True or self.use_all.lower() == "blowwood": # use Blow Wood model by default
             # Require h_R in spectral domain, so take FFT of returned value:
-            #self.h_R = fft(calculate_raman_term(
-            #    domain, self.tau_1, self.tau_2))
+            self.h_R = fft(calculate_raman_term(
+                domain, self.tau_1, self.tau_2))
+        elif self.use_all.lower() == "hollenbeck": # use Hollenbeck and Cantrell multiple-vibrational-mode model
             self.h_R = fft(calculate_raman_term_silica(domain))
         else:
-            self.h_R = 0.0
+            raise UnknownRamanResponseError(
+                    "Use False, True or a sting from the list [\"blowwood\", \"hollenbeck\"]")
+
+        # note: domain.window_t is added according to the case of Periodic convolution
+        # https://en.wikipedia.org/wiki/Convolution_theorem
+        self.h_R *= domain.window_t
 
         self.generate_nonlinearity()
 
@@ -188,17 +205,22 @@ class Nonlinearity(object):
         term_spm = np.abs(A) ** 2
         convolution = ifft(self.h_R * fft(term_spm))
         p = fft(A * (1.0 - self.f_R) * term_spm + self.f_R * A * convolution)
-
-        return ifft(self.factor * (1.0 + self.omega * self.ss_factor) * p)
+        
+        return ifft(self.factor * (1.0 + self.omega * self.ss_factor) * p) # 1j * -1j = 1
 
     def default_exp_f_all(self, A, h, B):
         """ Set all terms within an exponential factor. """
         term_spm = np.abs(A) ** 2
         convolution = ifft(self.h_R * fft(term_spm))
-        p = fft((1.0 - self.f_R) * term_spm + self.f_R * convolution)
+        #p = fft(A * (1.0 - self.f_R) * term_spm + self.f_R * A * convolution)
+        term_all = (1.0 - self.f_R) * term_spm + self.f_R * convolution
+        
+        term_ss_all = np.where(np.abs(B) > 1e-15, self.ss_factor / B, 0.0) * ifft(self.omega * fft(term_all * A))
 
-        return np.exp(h * ifft(self.factor *
-                      (1.0 + self.omega * self.ss_factor) * p)) * B
+        #return np.exp(h * ifft(self.factor *
+        #              (1.0 + self.omega * self.ss_factor) * p)) * B
+        # TODO gamma can only be a constant!!!
+        return np.exp(h * self.factor * (term_all + term_ss_all)) * B
 
     def default_f_with_ss(self, A, z):
         """ Use self-steepening only. """
