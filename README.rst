@@ -72,7 +72,7 @@ Install the latest development version of pyofss from GitHub:
 
 .. code-block:: bash
 
-   pip install git+https://github.com/daibo/pyofss.git
+   pip install git+https://github.com/galilley/pyofss.git
 
 Tests
 -----
@@ -82,3 +82,10 @@ Tests can be run within the pyofss package:
 .. code-block:: bash
 
    python setup.py test
+
+To run a separate module use something like this:
+
+.. code-block:: bash
+
+   python3 -m pyofss.modules.fibre
+
