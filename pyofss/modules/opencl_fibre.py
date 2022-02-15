@@ -35,6 +35,9 @@ from string import Template
 
 from .linearity import Linearity
 
+from pyofss.field import fftshift, fft
+from .nonlinearity import calculate_raman_term_silica
+
 OPENCL_OPERATIONS = Template("""
     #ifdef cl_khr_fp64 // Khronos extension
         #pragma OPENCL EXTENSION cl_khr_fp64 : enable
@@ -77,6 +80,11 @@ OPENCL_OPERATIONS = Template("""
         return c${dorf}_mul(element, c${dorf}_conj(element));
     }
 
+    __kernel void cl_square_abs2(__global c${dorf}_t* field) {
+        int gid = get_global_id(0);
+        field[gid] = c${dorf}_new(c${dorf}_abs_squared(field[gid]), (${dorf})0.0f);
+    }
+
     __kernel void cl_nonlinear(__global c${dorf}_t* field,
                                const ${dorf} gamma,
                                const ${dorf} stepsize) {
@@ -110,6 +118,49 @@ OPENCL_OPERATIONS = Template("""
         first_field[gid] = c${dorf}_mulr(first_field[gid], first_factor);
         first_field[gid] = c${dorf}_add(first_field[gid], c${dorf}_mulr(second_field[gid], second_factor));
     }
+
+    __kernel void cl_mul(__global c${dorf}_t* field,
+                         __global c${dorf}_t* factor) {
+        int gid = get_global_id(0);
+
+        field[gid] = c${dorf}_mul(field[gid], factor[gid]);
+    }
+
+    __kernel void cl_nonlinear_with_all_st1(__global c${dorf}_t* field,
+                                          __global c${dorf}_t* field_mod,
+                                          __global c${dorf}_t* conv,
+                                          const ${dorf} fR,
+                                          const ${dorf} fR_inv) {
+        int gid = get_global_id(0);
+
+        conv[gid] = c${dorf}_new(c${dorf}_real(conv[gid]), (${dorf})0.0f);
+
+        field[gid] = c${dorf}_add(
+            c${dorf}_mul(c${dorf}_mulr(field[gid], fR_inv), field_mod[gid]),
+                c${dorf}_mul(c${dorf}_mulr(field[gid], fR), conv[gid]));
+
+    }
+
+    __kernel void cl_nonlinear_with_all_st2(__global c${dorf}_t* field,
+                                __global c${dorf}_t* factor,
+                                const ${dorf} gamma) {
+        int gid = get_global_id(0);
+
+        const c${dorf}_t im_gamma = c${dorf}_new((${dorf})0.0f, gamma);
+
+        field[gid] = c${dorf}_mul(
+            im_gamma, c${dorf}_mul(
+                field[gid], factor[gid]));
+    }
+
+    __kernel void cl_step_mul(__global c${dorf}_t* field,
+                                const ${dorf} stepsize) {
+        int gid = get_global_id(0);
+
+        field[gid] = c${dorf}_mulr(
+            field[gid], stepsize);
+    }
+
 """)
 
 
@@ -124,11 +175,25 @@ class OpenclFibre(object):
     """
     def __init__(self, name="ocl_fibre", length=1.0, alpha=None,
                  beta=None, gamma=0.0, method="cl_rk4ip", total_steps=100,
-                 centre_omega=None, dorf='float', ctx=None, fast_math=False):
+                 centre_omega=None, dorf='float', ctx=None, fast_math=False,
+                 use_all = False, f_R = 0.18, domain = None):
 
         self.name = name
 
+        self.use_all = use_all
+
         self.gamma = gamma
+
+        self.nn_factor = None
+        self.h_R = None
+        if self.use_all:
+            omega = fftshift(domain.omega - domain.centre_omega)
+            ss_factor = 1.0 / domain.centre_omega
+            self.nn_factor = 1.0 + omega * ss_factor
+            self.buf_nn_factor = None
+
+            self.h_R = fft(calculate_raman_term_silica(domain))*domain.window_t
+            self.buf_h_R = None
         
         self.queue = None
         self.np_float = None
@@ -146,6 +211,12 @@ class OpenclFibre(object):
         self.buf_interaction = None
         self.buf_factor = None
 
+        self.buf_mod = None
+        self.buf_conv = None
+
+        self.f_R = f_R
+        self.f_R_inv = 1.0 - f_R
+
         self.shape = None
         self.plan = None
 
@@ -160,6 +231,11 @@ class OpenclFibre(object):
         self.zs = np.linspace(0.0, self.length, self.total_steps + 1)
 
         self.method = getattr(self, method.lower())
+
+        if self.use_all:
+            self.cl_n = getattr(self, 'cl_n_with_all')
+        else:
+            self.cl_n = getattr(self, 'cl_n_default')
         
         self.linearity = Linearity(alpha, beta, sim_type="default",
                                     use_cache=True, centre_omega=centre_omega, phase_lim=True)
@@ -247,6 +323,18 @@ class OpenclFibre(object):
         if self.buf_interaction is None:
             self.buf_interaction = cl_array.empty_like(self.buf_field)
 
+        if self.use_all:
+            if self.buf_h_R is None:
+                self.buf_h_R = cl_array.to_device(
+                                        self.queue, self.h_R.astype(self.np_complex))
+            if self.buf_nn_factor is None:
+                self.buf_nn_factor = cl_array.to_device(
+                                        self.queue, self.nn_factor.astype(self.np_complex))
+            if self.buf_mod is None:
+                self.buf_mod = cl_array.empty_like(self.buf_field)
+            if self.buf_conv is None:
+                self.buf_conv = cl_array.empty_like(self.buf_field)
+
         if self.cached_factor is False:
             self.buf_factor = cl_array.to_device(
                 self.queue, factor.astype(self.np_complex))
@@ -275,7 +363,7 @@ class OpenclFibre(object):
                                   field_buffer.data, self.buf_factor.data)
         self.plan.execute(field_buffer.data)
 
-    def cl_n(self, field_buffer, stepsize):
+    def cl_n_default(self, field_buffer, stepsize):
         """ Nonlinear part of step. """
         self.prg.cl_nonlinear(self.queue, self.shape, None, field_buffer.data,
                               self.np_float(self.gamma), self.np_float(stepsize))
@@ -284,6 +372,36 @@ class OpenclFibre(object):
         """ Nonlinear part of step, exponential term"""
         self.prg.cl_nonlinear_exp(self.queue, self.shape, None, fieldA_buffer.data, fieldB_buffer.data,
                               self.np_float(self.gamma), self.np_float(stepsize))
+
+    def cl_n_with_all(self, field_buffer, stepsize):
+        """ Nonlinear part of step with self_steeppening and raman """
+        # |A|^2
+        self.cl_copy(self.buf_mod, field_buffer)
+        self.prg.cl_square_abs2(self.queue, self.shape, None,
+                                self.buf_mod.data)
+
+        # conv = ifft(h_R*(fft(|A|^2)))
+        self.cl_copy(self.buf_conv, self.buf_mod)
+        self.plan.execute(self.buf_conv.data, inverse = True)
+        self.prg.cl_mul(self.queue, self.shape, None,
+                        self.buf_conv.data, self.buf_h_R.data)
+        self.plan.execute(self.buf_conv.data)
+
+        # p = fft( A*( (1-f_R)*|A|^2 + f_R*conv ) )
+        self.prg.cl_nonlinear_with_all_st1(self.queue, self.shape, None,
+                                         field_buffer.data, self.buf_mod.data, self.buf_conv.data,
+                                         self.np_float(self.f_R), self.np_float(self.f_R_inv))
+        self.plan.execute(field_buffer.data, inverse = True)
+
+        # A_out = ifft( factor*(1 + omega*ss_factor)*p)
+        self.prg.cl_nonlinear_with_all_st2(self.queue, self.shape, None, field_buffer.data,
+                              self.buf_nn_factor.data, self.np_float(self.gamma))
+        self.plan.execute(field_buffer.data)
+
+        self.prg.cl_step_mul(self.queue, self.shape, None,
+                             field_buffer.data, self.np_float(stepsize))
+
+
 
     def cl_sum(self, first_buffer, first_factor, second_buffer, second_factor):
         """ Calculate weighted summation. """
