@@ -34,9 +34,9 @@ else:
 from string import Template
 
 from .linearity import Linearity
+from .nonlinearity import Nonlinearity
 
 from pyofss.field import fftshift, fft
-from .nonlinearity import calculate_raman_term_silica
 
 OPENCL_OPERATIONS = Template("""
     #ifdef cl_khr_fp64 // Khronos extension
@@ -176,24 +176,22 @@ class OpenclFibre(object):
     def __init__(self, name="ocl_fibre", length=1.0, alpha=None,
                  beta=None, gamma=0.0, method="cl_rk4ip", total_steps=100,
                  centre_omega=None, dorf='float', ctx=None, fast_math=False,
-                 use_all = False, f_R = 0.18, domain = None):
+                 use_all = False, self_steepening=False, f_R = 0.18):
 
         self.name = name
+        
+        self.domain = None
 
         self.use_all = use_all
 
         self.gamma = gamma
 
         self.nn_factor = None
+        self.buf_nn_factor = None
         self.h_R = None
-        if self.use_all:
-            omega = fftshift(domain.omega - domain.centre_omega)
-            ss_factor = 1.0 / domain.centre_omega
-            self.nn_factor = 1.0 + omega * ss_factor
-            self.buf_nn_factor = None
-
-            self.h_R = fft(calculate_raman_term_silica(domain))*domain.window_t
-            self.buf_h_R = None
+        self.buf_h_R = None
+        self.omega = None
+        self.ss_factor = None            
         
         self.queue = None
         self.np_float = None
@@ -232,13 +230,15 @@ class OpenclFibre(object):
 
         self.method = getattr(self, method.lower())
 
-        if self.use_all:
+        if self.use_all.lower() == "hollenbeck":
             self.cl_n = getattr(self, 'cl_n_with_all')
         else:
             self.cl_n = getattr(self, 'cl_n_default')
         
         self.linearity = Linearity(alpha, beta, sim_type="default",
                                     use_cache=True, centre_omega=centre_omega, phase_lim=True)
+        self.nonlinearity = Nonlinearity(gamma, self_steepening=self_steepening,
+                                         use_all = use_all, f_R = f_R)
         self.factor = None
 
     def __call__(self, domain, field):
@@ -250,6 +250,15 @@ class OpenclFibre(object):
                 self.plan.execute = self.reikna_fft_execute
             else:
                 self.plan = Plan(domain.total_samples, queue=self.queue, dtype=self.np_complex, fast_math=self.fast_math)
+
+        if self.domain != domain:
+            self.domain = domain
+            if self.use_all.lower() == "hollenbeck":
+                self.nonlinearity(self.domain)
+                self.omega = self.nonlinearity.omega
+                self.ss_factor = self.nonlinearity.ss_factor
+                self.h_R = self.nonlinearity.h_R
+                self.nn_factor = 1.0 + self.omega * self.ss_factor
 
         if self.factor is None:
             self.factor = self.linearity(domain)
@@ -323,7 +332,7 @@ class OpenclFibre(object):
         if self.buf_interaction is None:
             self.buf_interaction = cl_array.empty_like(self.buf_field)
 
-        if self.use_all:
+        if self.use_all is not None:
             if self.buf_h_R is None:
                 self.buf_h_R = cl_array.to_device(
                                         self.queue, self.h_R.astype(self.np_complex))
