@@ -141,7 +141,7 @@ OPENCL_OPERATIONS = Template("""
 
     }
 
-    __kernel void cl_nonlinear_with_all_st2(__global c${dorf}_t* field,
+    __kernel void cl_nonlinear_with_all_st2_with_ss(__global c${dorf}_t* field,
                                 __global c${dorf}_t* factor,
                                 const ${dorf} gamma) {
         int gid = get_global_id(0);
@@ -159,6 +159,16 @@ OPENCL_OPERATIONS = Template("""
 
         field[gid] = c${dorf}_mulr(
             field[gid], stepsize);
+    }
+
+    __kernel void cl_nonlinear_with_all_st2_without_ss(__global c${dorf}_t* field,
+                                const ${dorf} gamma) {
+        int gid = get_global_id(0);
+
+        const c${dorf}_t im_gamma = c${dorf}_new((${dorf})0.0f, gamma);
+
+        field[gid] = c${dorf}_mul(
+            im_gamma, field[gid]);
     }
 
 """)
@@ -230,8 +240,11 @@ class OpenclFibre(object):
 
         self.method = getattr(self, method.lower())
 
-        if self.use_all.lower() == "hollenbeck":
-            self.cl_n = getattr(self, 'cl_n_with_all')
+        if self.use_all == "hollenbeck":
+            if self_steepening is False:
+                self.cl_n = getattr(self, 'cl_n_with_all')
+            else:
+                self.cl_n = getattr(self, 'cl_n_with_all_and_ss')
         else:
             self.cl_n = getattr(self, 'cl_n_default')
         
@@ -256,9 +269,12 @@ class OpenclFibre(object):
             if self.use_all.lower() == "hollenbeck":
                 self.nonlinearity(self.domain)
                 self.omega = self.nonlinearity.omega
-                self.ss_factor = self.nonlinearity.ss_factor
                 self.h_R = self.nonlinearity.h_R
-                self.nn_factor = 1.0 + self.omega * self.ss_factor
+                self.ss_factor = self.nonlinearity.ss_factor
+                if self.ss_factor != 0.0:
+                    self.nn_factor = 1.0 + self.omega * self.ss_factor
+                else:
+                    self.nn_factor = None
 
         if self.factor is None:
             self.factor = self.linearity(domain)
@@ -336,7 +352,7 @@ class OpenclFibre(object):
             if self.buf_h_R is None:
                 self.buf_h_R = cl_array.to_device(
                                         self.queue, self.h_R.astype(self.np_complex))
-            if self.buf_nn_factor is None:
+            if self.buf_nn_factor is None and self.nn_factor is not None:
                 self.buf_nn_factor = cl_array.to_device(
                                         self.queue, self.nn_factor.astype(self.np_complex))
             if self.buf_mod is None:
@@ -382,7 +398,7 @@ class OpenclFibre(object):
         self.prg.cl_nonlinear_exp(self.queue, self.shape, None, fieldA_buffer.data, fieldB_buffer.data,
                               self.np_float(self.gamma), self.np_float(stepsize))
 
-    def cl_n_with_all(self, field_buffer, stepsize):
+    def cl_n_with_all_and_ss(self, field_buffer, stepsize):
         """ Nonlinear part of step with self_steeppening and raman """
         # |A|^2
         self.cl_copy(self.buf_mod, field_buffer)
@@ -403,9 +419,35 @@ class OpenclFibre(object):
         self.plan.execute(field_buffer.data, inverse = True)
 
         # A_out = ifft( factor*(1 + omega*ss_factor)*p)
-        self.prg.cl_nonlinear_with_all_st2(self.queue, self.shape, None, field_buffer.data,
+        self.prg.cl_nonlinear_with_all_st2_with_ss(self.queue, self.shape, None, field_buffer.data,
                               self.buf_nn_factor.data, self.np_float(self.gamma))
         self.plan.execute(field_buffer.data)
+
+        self.prg.cl_step_mul(self.queue, self.shape, None,
+                             field_buffer.data, self.np_float(stepsize))
+
+    def cl_n_with_all(self, field_buffer, stepsize):
+        """ Nonlinear part of step with self_steeppening and raman """
+        # |A|^2
+        self.cl_copy(self.buf_mod, field_buffer)
+        self.prg.cl_square_abs2(self.queue, self.shape, None,
+                                self.buf_mod.data)
+
+        # conv = ifft(h_R*(fft(|A|^2)))
+        self.cl_copy(self.buf_conv, self.buf_mod)
+        self.plan.execute(self.buf_conv.data, inverse = True)
+        self.prg.cl_mul(self.queue, self.shape, None,
+                        self.buf_conv.data, self.buf_h_R.data)
+        self.plan.execute(self.buf_conv.data)
+
+        # p = A*( (1-f_R)*|A|^2 + f_R*conv )
+        self.prg.cl_nonlinear_with_all_st1(self.queue, self.shape, None,
+                                         field_buffer.data, self.buf_mod.data, self.buf_conv.data,
+                                         self.np_float(self.f_R), self.np_float(self.f_R_inv))
+
+        # A_out = factor*p
+        self.prg.cl_nonlinear_with_all_st2_without_ss(self.queue, self.shape, None, field_buffer.data,
+                                                  self.np_float(self.gamma))
 
         self.prg.cl_step_mul(self.queue, self.shape, None,
                              field_buffer.data, self.np_float(stepsize))
