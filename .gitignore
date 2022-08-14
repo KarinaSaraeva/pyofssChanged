@@ -1,0 +1,29 @@
+
+# Compiled files:
+*.pyc
+__pycache__
+*/__pycache__
+*/*/__pycache__
+*/*/*/__pycache__
+
+# Packages
+.eggs/
+*.egg-info
+dist
+build
+
+# Manifest for distutils:
+MANIFEST
+
+# Sphinx documentation:
+doc/_build/
+doc/_static/
+doc/_templates/
+
+# Temporary files
+*~
+.*~
+*.swp
+*.swo
+
+
