@@ -17,7 +17,9 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
-
+from scipy import power
+from numpy import log10
+from pyofss.modules.amplifier import Amplifier
 from .linearity import Linearity
 from .nonlinearity import Nonlinearity
 from .stepper import Stepper
@@ -63,7 +65,8 @@ class Fibre(object):
                  local_error=1.0e-6, method="RK4IP", total_steps=100,
                  self_steepening=False, raman_scattering=False,
                  rs_factor=0.003, use_all=False, centre_omega=None,
-                 tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18):
+                 tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18, small_signal_gain = 25, E_sat = 9.15,
+                 useAmplification = False):
 
         use_cache = not(method.upper().startswith('A'))
 
@@ -74,26 +77,32 @@ class Fibre(object):
         self.nonlinearity = Nonlinearity(gamma, sim_type, self_steepening,
                                          raman_scattering, rs_factor,
                                          use_all, tau_1, tau_2, f_R)
+        
+        self.small_signal_gain =  10 * log10(power(10, 0.1 * small_signal_gain) / total_steps)
 
         class Function():
             """ Class to hold linear and nonlinear functions. """
-            def __init__(self, l, n, linear, nonlinear):
+            def __init__(self, l, n, linear, nonlinear, amplification):
                 self.l = l
                 self.n = n
                 self.linear = linear
                 self.nonlinear = nonlinear
+                self.amplification = amplification
 
             def __call__(self, A, z):
                 return self.l(A, z) + self.n(A, z)
 
-        self.function = Function(self.l, self.n, self.linear, self.nonlinear)
+        self.amplifier = Amplifier(self, gain=self.small_signal_gain, E_sat=E_sat)
+
+        self.function = Function(self.l, self.n, self.linear, self.nonlinear, self.amplification)
 
         self.stepper = Stepper(traces, local_error, method, self.function,
-                               self.length, total_steps)
+                               self.length, total_steps, useAmplification)
 
     def __call__(self, domain, field):
-        self.linearity(domain)
+        self.linearity(domain) #__call__ -> generate_linearity(domain) -> getattr -> default_linearity
         self.nonlinearity(domain)
+        self.amplifier.setDomain(domain)
 
         # Set temporal and spectral arrays for storage:
         self.stepper.storage.t = domain.t
@@ -117,6 +126,9 @@ class Fibre(object):
     def nonlinear(self, A, h, B):
         """ Nonlinear term in exponential factor. """
         return self.nonlinearity.exp_non(A, h, B)
+
+    def amplification(self, A):
+        return self.amplifier(A)
 
 if __name__ == "__main__":
     """

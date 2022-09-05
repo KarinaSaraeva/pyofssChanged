@@ -75,7 +75,7 @@ class Stepper(object):
          values for equally spaced z-values, calculated using traces.
     """
     def __init__(self, traces=1, local_error=1.0e-6, method="RK4",
-                 f=None, length=1.0, total_steps=100):
+                 f=None, length=1.0, total_steps=100, useAmplification = False):
         self.traces = traces
         self.local_error = local_error
 
@@ -90,7 +90,7 @@ class Stepper(object):
         #~print "Using {0} method".format( self.method )
 
         # Delegate method and function to solver
-        self.solver = Solver(self.method, f)
+        self.solver = Solver(self.method, f, useAmplification)
         self.step = self.solver
 
         self.length = length

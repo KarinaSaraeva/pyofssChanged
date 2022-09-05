@@ -56,18 +56,18 @@ class Amplifier(object):
             self.E_sat = None
         self.field = None
 
-    def __call__(self, domain, field):
+    def __call__(self, field):
         # Convert field to spectral domain:
         self.field = fft(field)
 
         # Calculate linear gain from logarithmic gain (G_dB -> G_linear)
         G = power(10, 0.1 * self.gain)
         if self.E_sat is not None:
-            E = energy(field, domain.t)
+            E = energy(field, self.domain.t)
             G = G/(1.0 + E/self.E_sat)
         sqrt_G = sqrt(G)
 
-        if domain.channels > 1:
+        if self.domain.channels > 1:
             self.field[0] *= sqrt_G
             self.field[1] *= sqrt_G
         else:
@@ -75,4 +75,8 @@ class Amplifier(object):
 
         # convert field back to temporal domain:
         return ifft(self.field)
+
+    def setDomain(self, domain):
+        self.domain = domain
+
 
