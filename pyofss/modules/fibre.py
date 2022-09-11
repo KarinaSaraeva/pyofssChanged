@@ -65,7 +65,7 @@ class Fibre(object):
                  local_error=1.0e-6, method="RK4IP", total_steps=100,
                  self_steepening=False, raman_scattering=False,
                  rs_factor=0.003, use_all=False, centre_omega=None,
-                 tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18, small_signal_gain = 25, E_sat = 9.15,
+                 tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18, small_signal_gain = 2.5, E_sat = 9.15,
                  useAmplification = False):
 
         use_cache = not(method.upper().startswith('A'))
@@ -78,7 +78,7 @@ class Fibre(object):
                                          raman_scattering, rs_factor,
                                          use_all, tau_1, tau_2, f_R)
         
-        self.small_signal_gain =  10 * log10(power(10, 0.1 * small_signal_gain) / total_steps)
+        self.small_signal_gain =  small_signal_gain
 
         class Function():
             """ Class to hold linear and nonlinear functions. """
@@ -92,7 +92,7 @@ class Fibre(object):
             def __call__(self, A, z):
                 return self.l(A, z) + self.n(A, z)
 
-        self.amplifier = Amplifier(self, gain=self.small_signal_gain, E_sat=E_sat)
+        self.amplifier = Amplifier(self, gain=self.small_signal_gain, E_sat=E_sat, steps = total_steps)
 
         self.function = Function(self.l, self.n, self.linear, self.nonlinear, self.amplification)
 
@@ -127,8 +127,8 @@ class Fibre(object):
         """ Nonlinear term in exponential factor. """
         return self.nonlinearity.exp_non(A, h, B)
 
-    def amplification(self, A):
-        return self.amplifier(A)
+    def amplification(self, A, h, step):
+        return self.amplifier.exp_lin(A, h, step)
 
 if __name__ == "__main__":
     """

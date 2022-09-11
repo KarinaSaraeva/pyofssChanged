@@ -78,9 +78,12 @@ class Solver(object):
         else:
             self.f = f
 
-    def __call__(self, A, z, h):
+    def __call__(self, A, z, h, step = 1):
         """ Return A_fine, calculated by method. """
-        return self.method(A, z, h, self.f, self.useAmplification)
+        if (step != 1):
+            return self.method(A, z, h, self.f, self.useAmplification, step)
+        else: 
+            return self.method(A, z, h, self.f, self.useAmplification)
 
     @staticmethod
     def euler(A, z, h, f):
@@ -225,24 +228,24 @@ class Solver(object):
         return f.linear(A_N, h)
 
     @staticmethod
-    def ss_symmetric(A, z, h, f, useAmplification = False):
+    def ss_symmetric(A, z, h, f, useAmplification = False, step = 1):
         """ Symmetric split-step method """
         # Alternative:
         # A_N = f.nonlinear(A, 0.5 * h, A)
         # A_L = f.linear(A_N, h)
         # return f.nonlinear(A, 0.5 * h, A_L)
 
-        A_L = f.linear(A, 0.5 * h)
-
         if (useAmplification):
-            f.amplification(A)
-
-        A_N = f.nonlinear(A, h, A_L)
-
-        if (useAmplification):
-            f.linear(A_N, 0.5 * h)
-            return f.amplification(A)
+            A_L1 = f.linear(A, 0.5 * h)
+            print('A_L1 = ', np.max(abs(A_L1)), ' z = ',  z)
+            A_A = f.amplification(A_L1, h, step)
+            print('A_A = ', np.max(abs(A_A)), ' z = ',  z)
+            A_N = f.nonlinear(A, h, A_A)
+            print('A_N = ', np.max(abs(A_N)), ' z = ',  z)
+            return f.linear(A_N, 0.5 * h)
         else:
+            A_L = f.linear(A, 0.5 * h)
+            A_N = f.nonlinear(A, h, A_L)
             return f.linear(A_N, 0.5 * h)
 
     @staticmethod

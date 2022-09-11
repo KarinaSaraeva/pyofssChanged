@@ -78,6 +78,7 @@ class Stepper(object):
                  f=None, length=1.0, total_steps=100, useAmplification = False):
         self.traces = traces
         self.local_error = local_error
+        self.useAmplification = useAmplification
 
         # Check if adaptive stepsize is required:
         if method.upper().startswith('A'):
@@ -147,12 +148,17 @@ class Stepper(object):
 
         # Start at z = 0.0 and repeat until z = length - h (inclusive),
         # i.e. z[-1]
-        for z in zs[:-1]:
+
+        for i, z in enumerate(zs[:-1]):
             # Currently at L = z
+    
             if self.solver.embedded:
                 self.A_out, A_other = self.step(self.A_out, z, h)
             else:
-                self.A_out = self.step(self.A_out, z, h)
+                if self.useAmplification:
+                    self.A_out = self.step(self.A_out, z, h, i+1)
+                else:
+                    self.A_out = self.step(self.A_out, z, h)
             # Now at L = z + h
 
             # If multiple traces required, store A_out at each relavant z
