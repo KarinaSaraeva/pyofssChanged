@@ -35,9 +35,10 @@ class Amplifier(object):
     Simple amplifier provides gain but no noise
     """
     def __init__(self, name="amplifier", gain=None,
-                 E_sat=None, P_sat=None, rep_rate=None, steps = 1):
+                 E_sat=None, P_sat=None, rep_rate=None, length = 1.0, steps = 1):
 
         self.total_steps = steps
+        self.length = length
 
         if gain is None:
             raise Exception("The gain is not defined.")
@@ -64,7 +65,7 @@ class Amplifier(object):
 
         # Calculate linear gain from logarithmic gain (G_dB -> G_linear)
         M = power(10, 0.1 * self.gain)
-        G = (step*(M-1) + self.total_steps)/((step + 1)(M-1) + self.total_steps)
+        G = M / self.total_steps
         print(G)
         if self.E_sat is not None:
             E = energy(field, self.domain.t)
@@ -80,13 +81,13 @@ class Amplifier(object):
         # convert field back to temporal domain:
         return ifft(self.field)
 
-    def exp_lin(self, field, h, step = 1):
-        M = power(10, 0.1 * self.gain)
-        G = (step*(M-1) + self.total_steps)/((step + 1)*(M-1) + self.total_steps)
+    def exp_lin(self, A, h, field, step = 1):
+        M = np.log(power(10, 0.1 * self.gain))
+        G = (M*h) / (2*self.length)
         if self.E_sat is not None:
-            E = energy(field, self.domain.t)
+            E = energy(A, self.domain.t)
             G = G/(1.0 + E/self.E_sat)
-        hf = G * h
+        hf = G
         return ifft(np.exp(hf) * fft(field))
 
     def setDomain(self, domain):

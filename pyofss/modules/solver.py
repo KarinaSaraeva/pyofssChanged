@@ -237,12 +237,10 @@ class Solver(object):
 
         if (useAmplification):
             A_L1 = f.linear(A, 0.5 * h)
-            print('A_L1 = ', np.max(abs(A_L1)), ' z = ',  z)
-            A_A = f.amplification(A_L1, h, step)
-            print('A_A = ', np.max(abs(A_A)), ' z = ',  z)
-            A_N = f.nonlinear(A, h, A_A)
-            print('A_N = ', np.max(abs(A_N)), ' z = ',  z)
-            return f.linear(A_N, 0.5 * h)
+            A_A = f.amplification(A_L1, 0.5 * h, A_L1, step)
+            A_N = f.nonlinear(A_A, h, A_A)
+            AL_2 = f.linear(A_N, 0.5 * h)
+            return f.amplification(AL_2, 0.5 * h, AL_2, step)
         else:
             A_L = f.linear(A, 0.5 * h)
             A_N = f.nonlinear(A, h, A_L)
@@ -296,7 +294,7 @@ class Solver(object):
         return f.linear(A_N, 0.5 * h)
 
     @staticmethod
-    def rk4ip(A, z, h, f):
+    def rk4ip(A, z, h, f, useAmplification = False):
         """ Runge-Kutta in the interaction picture method """
         # Store half the step-size since it is used often:
         hh = 0.5 * h

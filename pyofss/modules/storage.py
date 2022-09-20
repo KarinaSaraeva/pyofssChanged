@@ -18,11 +18,28 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from re import X
 import numpy as np
+import os
+import warnings
 
 from pyofss import field
 from pyofss.field import temporal_power
 from pyofss.field import spectral_power
+
+import matplotlib.animation as animation
+from matplotlib import pyplot as plt
+import pandas as pd
+
+class StorageError(Exception):
+    pass
+
+
+class DirExistenceError(StorageError):
+    pass
+
+class DifferentAxisError(StorageError):
+    pass
 
 
 def reduce_to_range(x, ys, first_value, last_value):
@@ -68,18 +85,39 @@ def reduce_to_range(x, ys, first_value, last_value):
     else:
         print("Cannot reduce storage arrays unless last_value > first_value")
 
+def check_dir(dir_name):
+        if not os.path.exists(dir_name):
+            os.makedirs(dir_name)
+            print("Directory: ", dir_name," is created!")
+        else:
+            print("Directory: ", dir_name," found...")
+            if not os.listdir(dir_name):
+                print("Directory is empty OK")
+            else:    
+                warnings.warn("Directory is not empty")
+
+def get_value_from_str(x):
+        if (x == 'None'):
+            return None
+        else: 
+            return float(x)
 
 class Storage(object):
     """
     Contains A arrays for multiple z values. Also contains t array and
     functions to modify the stored data.
     """
-    def __init__(self):
+    def __init__(self, dir = None, **file_import_arguments):
+        if (dir is not None):
+            check_dir(dir)
+        self.dir = dir
         self.t = []
         self.As = []
         self.z = []
 
         self.nu = []
+
+        self.file_import_arguments = file_import_arguments
 
         # List of tuples of the form (z, h); one tuple per successful step:
         self.step_sizes = []
@@ -110,6 +148,118 @@ class Storage(object):
         self.z.append(z)
         self.As.append(A)
 
+    def check_dir_specified(self, dir):
+        if (dir is not None):
+            self.dir = dir
+            check_dir(self.dir)
+        elif (self.dir is not None):
+            assert DirExistenceError('directory must be specified!')
+
+    def save_all_storage_to_dir(self, is_temporal=True, channel=None, dir = None, **file_import_arguments):
+        self.check_dir_specified(dir)
+
+        if (self.dir is not None):
+            for i in range(len(self.As)):
+                self.save_step_to_file(is_temporal=is_temporal, channel=channel, i = i, **file_import_arguments)
+
+    def save_step_to_file(self, is_temporal=True, channel=None, i = -1, **file_import_arguments):
+        if (self.dir is not None):
+            if is_temporal:
+                x = self.t
+                x_label = 't'
+                calculate_power = temporal_power
+            else:
+                x = self.nu
+                x_label = 'nu'
+                calculate_power = spectral_power
+
+            if channel is None:
+                temp = self.As[i]
+                y = temp
+                df = pd.DataFrame(np.column_stack([x, calculate_power(y)]), columns=[x_label, 'P'])
+                file_name = os.path.join(self.dir, f'z{i}_{self.z[i]*1e6:.2f}mm.csv')
+                with open(file_name, 'w') as f:
+                    if (len(file_import_arguments) != 0):
+                       self.file_import_arguments = file_import_arguments
+                    for arg in self.file_import_arguments.items():
+                        f.write(f'# {arg[0]}={arg[1]} \n')
+                    f.write(f'# z_current={self.z[i]} \n')
+                    df.to_csv(f, sep = ' ')
+
+    def set_file_export_arguments(self, commentlines):
+        for line in commentlines:
+            if 'alpha=' in line:
+                first, remainder = line.split('alpha=')
+                alpha = get_value_from_str(remainder.split()[0])
+            elif 'beta2=' in line:
+                first, remainder = line.split('beta2=')
+                beta2 = get_value_from_str(remainder.split()[0])
+            elif 'beta3=' in line:
+                first, remainder = line.split('beta3=')
+                beta3 = get_value_from_str(remainder.split()[0])
+            elif 'gamma=' in line:
+                first, remainder = line.split('gamma=')
+                gamma = get_value_from_str(remainder.split()[0])
+            elif 'small_signal_gain=' in line:
+                first, remainder = line.split('small_signal_gain=')
+                small_signal_gain = get_value_from_str(remainder.split()[0])
+            elif 'E_sat=' in line:
+                first, remainder = line.split('E_sat=')
+                E_sat = get_value_from_str(remainder.split()[0])
+            elif 'length=' in line:
+                first, remainder = line.split('length=')
+                length = get_value_from_str(remainder.split()[0])
+            elif 'z_current=' in line:
+                first, remainder = line.split('z_current=')
+                z_current = get_value_from_str(remainder.split()[0])
+
+        self.file_export_arguments = {'alpha': alpha, 'beta': [0, 0, beta2, beta3],
+                            'gamma': gamma, 'small_signal_gain': small_signal_gain, 'E_sat': E_sat}
+
+        return z_current
+            
+    def read_all_from_dir(self, dir = None):
+        self.check_dir_specified(dir)
+        z = np.zeros(len(os.listdir(self.dir)))
+        y = None 
+
+        list = os.listdir(self.dir)
+        def sorting_func(name):
+            name = name.replace('z','')
+            sub = name.split('_',1)[1]
+            name = name.replace(sub,'')
+            name = name.replace('_','')
+            return int(name)
+        list.sort(key = sorting_func)
+
+        for i in range(len(list)):
+            commentlines = []
+            filename = os.path.join(self.dir, list[i])
+            with open(filename) as f:
+                for line in f:
+                    if line.startswith('#'):
+                        commentlines.append(line)
+                
+                z_current = self.set_file_export_arguments(commentlines)
+                df = pd.read_csv(filename, index_col=0, comment="#", sep=' ')
+                x_current = df[df.columns[0]].values
+                y_current = df[df.columns[1]].values
+                if y is None:
+                    y = np.zeros((len(z), len(x_current)))
+                    x_previos = x_current
+                    x = x_current    
+                if (not np.array_equal(x_previos, x_current)):
+                    assert DifferentAxisError('the x-axis is different when reading files, you can not get data for plotting')
+
+                z[i] = z_current
+                y[i] = y_current
+        
+        self.plt_data = y
+        self.x_grid = x
+        self.z_grid = z
+
+        return (x, y, z)
+            
     def get_plot_data(self, is_temporal=True, reduced_range=None,
                       normalised=False, channel=None):
         """
@@ -147,8 +297,33 @@ class Storage(object):
             x, y = reduce_to_range(x, y, reduced_range[0], reduced_range[1])
 
         z = self.z
+        self.plt_data = y
+        self.x_grid = x
+        self.z_grid = z
 
         return (x, y, z)
+
+
+    def draw_animation(self):
+        fig = plt.figure()
+        ax = plt.axes()
+        line, = ax.plot([], [], lw=2)
+
+        def init():
+            line.set_data([], [])
+            ax.set_xlim(np.amin(self.x_grid), np.amax(self.x_grid))
+            ax.set_ylim(0, np.amax(self.plt_data))
+            return line,
+
+        x = self.x_grid
+
+        def animate(i):
+            y = self.plt_data[int(i)]
+            line.set_data(x, y)
+            return line,
+
+        anim = animation.FuncAnimation(fig, animate, frames=np.linspace(0, len(self.z_grid), len(self.z_grid)), init_func=init, interval=50, blit=True)
+        return anim
 
     @staticmethod
     def find_nearest(array, value):

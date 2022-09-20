@@ -20,6 +20,8 @@
 
 import numpy as np
 from scipy import linalg
+from tqdm import tqdm
+from pyofss.field import temporal_power
 
 from .storage import Storage
 from .solver import Solver
@@ -75,7 +77,7 @@ class Stepper(object):
          values for equally spaced z-values, calculated using traces.
     """
     def __init__(self, traces=1, local_error=1.0e-6, method="RK4",
-                 f=None, length=1.0, total_steps=100, useAmplification = False):
+                 f=None, length=1.0, total_steps=100, useAmplification = False, dir = None, **file_import_arguments):
         self.traces = traces
         self.local_error = local_error
         self.useAmplification = useAmplification
@@ -98,11 +100,12 @@ class Stepper(object):
         self.total_steps = total_steps
 
         # Use a list of tuples ( z, A(z) ) for dense output if required:
-        self.storage = Storage()
+        file_import_arguments['length'] = self.length
+        self.storage = Storage(dir, **file_import_arguments)
 
         # Store constants for adaptive method:
         self.total_attempts = 100
-        self.steps_max = 50000
+        self.steps_max = 100000
         self.step_size_min = 1e-37 # some small value
 
         self.safety = 0.9
@@ -145,17 +148,19 @@ class Stepper(object):
         # Make sure to store the initial A if more than one trace is required:
         if self.traces != 1:
             self.storage.append(zs[0], self.A_out)
+            self.storage.save_step_to_file()
 
         # Start at z = 0.0 and repeat until z = length - h (inclusive),
         # i.e. z[-1]
 
-        for i, z in enumerate(zs[:-1]):
+        for i, z in enumerate(tqdm(zs[:-1])):
             # Currently at L = z
     
             if self.solver.embedded:
                 self.A_out, A_other = self.step(self.A_out, z, h)
             else:
                 if self.useAmplification:
+                    # print('A_out = ', np.max(temporal_power(self.A_out)), ' z = ',  z)
                     self.A_out = self.step(self.A_out, z, h, i+1)
                 else:
                     self.A_out = self.step(self.A_out, z, h)
@@ -165,6 +170,7 @@ class Stepper(object):
             # value:
             if self.traces != 1:
                 self.storage.append(z + h, self.A_out)
+                self.storage.save_step_to_file()
 
         # Store total number of fft and ifft operations that were used:
         self.storage.store_current_fft_count()
@@ -224,7 +230,7 @@ class Stepper(object):
             self.storage.append(z, self.A_out)
 
         # Limit the number of steps in case of slowly converging runs:
-        for s in range(1, self.steps_max):
+        for s in tqdm(range(1, self.steps_max)):
             # If step-size takes z our of range [0.0, length], then correct it:
             if (z + h) > self.length:
                 h = self.length - z

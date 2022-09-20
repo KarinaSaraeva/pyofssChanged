@@ -65,8 +65,8 @@ class Fibre(object):
                  local_error=1.0e-6, method="RK4IP", total_steps=100,
                  self_steepening=False, raman_scattering=False,
                  rs_factor=0.003, use_all=False, centre_omega=None,
-                 tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18, small_signal_gain = 2.5, E_sat = 9.15,
-                 useAmplification = False):
+                 tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18, small_signal_gain = 0., E_sat = 9.15,
+                 useAmplification = False, dir = None):
 
         use_cache = not(method.upper().startswith('A'))
 
@@ -92,12 +92,27 @@ class Fibre(object):
             def __call__(self, A, z):
                 return self.l(A, z) + self.n(A, z)
 
-        self.amplifier = Amplifier(self, gain=self.small_signal_gain, E_sat=E_sat, steps = total_steps)
+        self.amplifier = Amplifier(self, gain=self.small_signal_gain, E_sat=E_sat, length=self.length, steps = total_steps)
 
         self.function = Function(self.l, self.n, self.linear, self.nonlinear, self.amplification)
 
+        def check_if_None(x):
+            return 'None' if x is None else x
+
+        def get_beta_by_i(i):
+            if beta is not None: 
+                if i > len(beta) - 1:
+                    return 'None'
+                else:
+                    return beta[i]
+            else:
+                return 'None'
+
+        file_import_arguments = {'alpha': check_if_None(alpha), 'beta2': get_beta_by_i(2), 'beta3': get_beta_by_i(3),
+                                 'gamma': gamma, 'small_signal_gain': check_if_None(small_signal_gain), 'E_sat': check_if_None(E_sat)} 
         self.stepper = Stepper(traces, local_error, method, self.function,
-                               self.length, total_steps, useAmplification)
+                               self.length, total_steps, useAmplification, dir,
+                               **file_import_arguments)
 
     def __call__(self, domain, field):
         self.linearity(domain) #__call__ -> generate_linearity(domain) -> getattr -> default_linearity
@@ -127,8 +142,8 @@ class Fibre(object):
         """ Nonlinear term in exponential factor. """
         return self.nonlinearity.exp_non(A, h, B)
 
-    def amplification(self, A, h, step):
-        return self.amplifier.exp_lin(A, h, step)
+    def amplification(self, A, h, B, step):
+        return self.amplifier.exp_lin(A, h, B, step)
 
 if __name__ == "__main__":
     """
