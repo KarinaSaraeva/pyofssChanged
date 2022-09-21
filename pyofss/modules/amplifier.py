@@ -88,7 +88,7 @@ class Amplifier(object):
             E = energy(A, self.domain.t)
             G = G/(1.0 + E/self.E_sat)
         hf = G
-        return ifft(np.exp(hf) * fft(field))
+        return np.exp(hf) * (field)
 
     def setDomain(self, domain):
         self.domain = domain
