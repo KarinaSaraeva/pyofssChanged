@@ -119,7 +119,7 @@ class Fibre(object):
         file_import_arguments = {'alpha': check_if_None(alpha), 'beta2': get_beta_by_i(2), 'beta3': get_beta_by_i(3),
                                  'gamma': gamma, 'small_signal_gain': check_if_None(small_signal_gain), 'E_sat': check_if_None(E_sat)} 
         self.stepper = Stepper(traces, local_error, method, self.function,
-                               self.length, total_steps, useAmplification, dir,
+                               self.length, total_steps, dir,
                                **file_import_arguments)
 
     def __call__(self, domain, field):

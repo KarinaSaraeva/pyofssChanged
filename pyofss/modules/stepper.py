@@ -77,10 +77,9 @@ class Stepper(object):
          values for equally spaced z-values, calculated using traces.
     """
     def __init__(self, traces=1, local_error=1.0e-6, method="RK4",
-                 f=None, length=1.0, total_steps=100, useAmplification = False, dir = None, **file_import_arguments):
+                 f=None, length=1.0, total_steps=100, dir = None, **file_import_arguments):
         self.traces = traces
         self.local_error = local_error
-        self.useAmplification = useAmplification
 
         # Check if adaptive stepsize is required:
         if method.upper().startswith('A'):
@@ -93,7 +92,7 @@ class Stepper(object):
         #~print "Using {0} method".format( self.method )
 
         # Delegate method and function to solver
-        self.solver = Solver(self.method, f, useAmplification)
+        self.solver = Solver(self.method, f)
         self.step = self.solver
 
         self.length = length
@@ -159,11 +158,7 @@ class Stepper(object):
             if self.solver.embedded:
                 self.A_out, A_other = self.step(self.A_out, z, h)
             else:
-                if self.useAmplification:
-                    # print('A_out = ', np.max(temporal_power(self.A_out)), ' z = ',  z)
-                    self.A_out = self.step(self.A_out, z, h, i+1)
-                else:
-                    self.A_out = self.step(self.A_out, z, h)
+                self.A_out = self.step(self.A_out, z, h)
             # Now at L = z + h
 
             # If multiple traces required, store A_out at each relavant z

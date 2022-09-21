@@ -61,8 +61,7 @@ class Solver(object):
               "ss_symmetric": 3, "ss_reduced": 2, "ss_agrawal": 3,
               "ss_sym_midpoint": 3, "ss_sym_rk4": 5, "rk4ip": 5}
 
-    def __init__(self, method="rk4", f=None, useAmplification = False):
-        self.useAmplification = useAmplification
+    def __init__(self, method="rk4", f=None):
         if method.lower() in self.embedded_solvers:
             self.embedded = True
         else:
@@ -284,7 +283,7 @@ class Solver(object):
         return f.linear(A_N, 0.5 * h)
 
     @staticmethod
-    def rk4ip(A, z, h, f, useAmplification = False):
+    def rk4ip(A, z, h, f):
         """ Runge-Kutta in the interaction picture method """
         # Store half the step-size since it is used often:
         hh = 0.5 * h
