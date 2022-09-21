@@ -114,12 +114,15 @@ class Linearity(object):
     Dispersion is used by fibre to generate a fairly general dispersion array.
     """
     def __init__(self, alpha=None, beta=None, sim_type=None,
-                 use_cache=False, centre_omega=None, phase_lim=False):
+                 use_cache=False, centre_omega=None, phase_lim=False, 
+                 amplifier = None):
 
         self.alpha = alpha
         self.beta = beta
         self.centre_omega = centre_omega
         self.phase_lim = phase_lim
+
+        self.amplifier = amplifier
 
         self.generate_linearity = getattr(self, "%s_linearity" % sim_type,
                                           self.default_linearity)
@@ -147,6 +150,8 @@ class Linearity(object):
 
     def default_linearity(self, domain):
         # Calculate dispersive terms:
+        if self.amplifier is not None:
+            self.amplifier.setDomain(domain)
         if self.beta is None:
             self.factor = 0.0
         else:
@@ -228,12 +233,14 @@ class Linearity(object):
         hf = self.factor * h
         if self.phase_lim:
             hf = self._limit_imag_part(hf)
-        return ifft(np.exp(hf) * fft(A))
+        amp_factor = self.amplifier.factor(A, h) if self.amplifier is not None else 0
+        return ifft(np.exp(amp_factor + hf) * fft(A))
 
     def default_exp_f_cached(self, A, h):
         if self.cached_factor is None:
             self.cache(h)
-        return ifft(self.cached_factor * fft(A))
+        amp_factor = self.amplifier.factor(A, h) if self.amplifier is not None else 0
+        return ifft((np.exp(amp_factor) * (self.cached_factor)) * fft(A))
 
     def wdm_f(self, As, z):
         return np.asarray([ifft(self.factor[0] * fft(As[0])),

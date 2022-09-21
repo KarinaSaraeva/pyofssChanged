@@ -81,7 +81,7 @@ class Amplifier(object):
         # convert field back to temporal domain:
         return ifft(self.field)
 
-    def exp_lin(self, A, h, field, step = 1):
+    def exp_lin(self, A, h, field):
         M = np.log(power(10, 0.1 * self.gain))
         G = (M*h) / (2*self.length)
         if self.E_sat is not None:
@@ -89,6 +89,15 @@ class Amplifier(object):
             G = G/(1.0 + E/self.E_sat)
         hf = G
         return np.exp(hf) * (field)
+
+    def factor(self, A, h):
+        M = np.log(power(10, 0.1 * self.gain))
+        G = (M*h) / (2*self.length)
+        if self.E_sat is not None:
+            E = energy(A, self.domain.t)
+            factor = G/(1.0 + E/self.E_sat)
+        factor = G
+        return factor
 
     def setDomain(self, domain):
         self.domain = domain

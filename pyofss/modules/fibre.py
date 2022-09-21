@@ -24,6 +24,8 @@ from .linearity import Linearity
 from .nonlinearity import Nonlinearity
 from .stepper import Stepper
 
+class FiberInitError(Exception):
+    pass
 
 class Fibre(object):
     """
@@ -45,6 +47,8 @@ class Fibre(object):
     :param double tau_1: Constant used in Raman scattering calculation
     :param double tau_2: Constant used in Raman scattering calculation
     :param double f_R: Constant setting the fraction of Raman scattering used
+    :param double small_signal_gain: Constant used in amplification fiber modeling [dB]
+    :params double E_sat: Saturation energy used in amplification fiber modeling [nJ]
 
     sim_type is either default or wdm.
 
@@ -65,36 +69,40 @@ class Fibre(object):
                  local_error=1.0e-6, method="RK4IP", total_steps=100,
                  self_steepening=False, raman_scattering=False,
                  rs_factor=0.003, use_all=False, centre_omega=None,
-                 tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18, small_signal_gain = 0., E_sat = 9.15,
-                 useAmplification = False, dir = None):
+                 tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18, small_signal_gain = None, 
+                 E_sat = None, dir = None):
 
         use_cache = not(method.upper().startswith('A'))
 
         self.name = name
         self.length = length
+        self.small_signal_gain =  small_signal_gain
+
+        if (small_signal_gain is not None) and (E_sat is not None):
+            self.amplifier = Amplifier(self, gain=self.small_signal_gain, E_sat=E_sat, length=self.length, steps = total_steps)
+        elif (small_signal_gain is None) and (E_sat is None):
+            self.amplifier = None
+        else:
+            assert(FiberInitError('Not enought parameters to initialise amplification fiber: both small_signal_gain and E_sat must be passed!'))
+
         self.linearity = Linearity(alpha, beta, sim_type,
-                                   use_cache, centre_omega)
+                                   use_cache, centre_omega, amplifier=self.amplifier)
         self.nonlinearity = Nonlinearity(gamma, sim_type, self_steepening,
                                          raman_scattering, rs_factor,
                                          use_all, tau_1, tau_2, f_R)
-        
-        self.small_signal_gain =  small_signal_gain
 
         class Function():
             """ Class to hold linear and nonlinear functions. """
-            def __init__(self, l, n, linear, nonlinear, amplification):
+            def __init__(self, l, n, linear, nonlinear):
                 self.l = l
                 self.n = n
                 self.linear = linear
                 self.nonlinear = nonlinear
-                self.amplification = amplification
 
             def __call__(self, A, z):
                 return self.l(A, z) + self.n(A, z)
 
-        self.amplifier = Amplifier(self, gain=self.small_signal_gain, E_sat=E_sat, length=self.length, steps = total_steps)
-
-        self.function = Function(self.l, self.n, self.linear, self.nonlinear, self.amplification)
+        self.function = Function(self.l, self.n, self.linear, self.nonlinear)
 
         def check_if_None(x):
             return 'None' if x is None else x
@@ -117,7 +125,6 @@ class Fibre(object):
     def __call__(self, domain, field):
         self.linearity(domain) #__call__ -> generate_linearity(domain) -> getattr -> default_linearity
         self.nonlinearity(domain)
-        self.amplifier.setDomain(domain)
 
         # Set temporal and spectral arrays for storage:
         self.stepper.storage.t = domain.t
@@ -141,9 +148,6 @@ class Fibre(object):
     def nonlinear(self, A, h, B):
         """ Nonlinear term in exponential factor. """
         return self.nonlinearity.exp_non(A, h, B)
-
-    def amplification(self, A, h, B, step):
-        return self.amplifier.exp_lin(A, h, B, step)
 
 if __name__ == "__main__":
     """

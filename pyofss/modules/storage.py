@@ -111,6 +111,7 @@ class Storage(object):
         if (dir is not None):
             check_dir(dir)
         self.dir = dir
+        self.plt_data = None
         self.t = []
         self.As = []
         self.z = []
@@ -297,32 +298,33 @@ class Storage(object):
             x, y = reduce_to_range(x, y, reduced_range[0], reduced_range[1])
 
         z = self.z
-        self.plt_data = y
-        self.x_grid = x
-        self.z_grid = z
-
+        self.plt_data = (x, y, z)
         return (x, y, z)
 
 
-    def draw_animation(self):
+    def draw_animation(self, is_temporal=True, reduced_range=None,
+                      normalised=False, channel=None):
+        if (self.plt_data is None):
+            self.get_plot_data(is_temporal, reduced_range, normalised, channel)
+
         fig = plt.figure()
         ax = plt.axes()
         line, = ax.plot([], [], lw=2)
 
         def init():
             line.set_data([], [])
-            ax.set_xlim(np.amin(self.x_grid), np.amax(self.x_grid))
-            ax.set_ylim(0, np.amax(self.plt_data))
+            ax.set_xlim(np.amin(self.plt_data[0]), np.amax(self.plt_data[0]))
+            ax.set_ylim(0, np.amax(self.plt_data[1]))
             return line,
 
-        x = self.x_grid
+        x = self.plt_data[0]
 
         def animate(i):
-            y = self.plt_data[int(i)]
+            y = self.plt_data[1][int(i)]
             line.set_data(x, y)
             return line,
 
-        anim = animation.FuncAnimation(fig, animate, frames=np.linspace(0, len(self.z_grid), len(self.z_grid)), init_func=init, interval=50, blit=True)
+        anim = animation.FuncAnimation(fig, animate, frames=np.linspace(0, len(self.plt_data[2]), len(self.plt_data[2])), init_func=init, interval=50, blit=True)
         return anim
 
     @staticmethod
