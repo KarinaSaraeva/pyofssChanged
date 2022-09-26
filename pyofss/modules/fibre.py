@@ -18,14 +18,17 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 from scipy import power
-from numpy import log10
+from scipy.signal import find_peaks, peak_widths
+from numpy import log10, amax, abs
 from pyofss.modules.amplifier import Amplifier
 from .linearity import Linearity
 from .nonlinearity import Nonlinearity
 from .stepper import Stepper
 
+
 class FiberInitError(Exception):
     pass
+
 
 class Fibre(object):
     """
@@ -64,26 +67,34 @@ class Fibre(object):
 
     local_error: Relative local error to aim for between propagtion points.
     """
+
     def __init__(self, name="fibre", length=1.0, alpha=None,
                  beta=None, gamma=0.0, sim_type=None, traces=1,
                  local_error=1.0e-6, method="RK4IP", total_steps=100,
                  self_steepening=False, raman_scattering=False,
                  rs_factor=0.003, use_all=False, centre_omega=None,
-                 tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18, small_signal_gain = None, 
-                 E_sat = None, dir = None):
+                 tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18, small_signal_gain=None,
+                 E_sat=None, dir=None):
 
         use_cache = not(method.upper().startswith('A'))
 
         self.name = name
         self.length = length
-        self.small_signal_gain =  small_signal_gain
+        self.small_signal_gain = small_signal_gain
+        self.beta_2 = beta[2] if beta is not None else None
+        self.gamma = gamma
+        self.L_D = None
+        self.L_NL = None
+        self.refrence_length = None
 
         if (small_signal_gain is not None) and (E_sat is not None):
-            self.amplifier = Amplifier(self, gain=self.small_signal_gain, E_sat=E_sat, length=self.length, steps = total_steps)
+            self.amplifier = Amplifier(
+                self, gain=self.small_signal_gain, E_sat=E_sat, length=self.length, steps=total_steps)
         elif (small_signal_gain is None) and (E_sat is None):
             self.amplifier = None
         else:
-            assert(FiberInitError('Not enought parameters to initialise amplification fiber: both small_signal_gain and E_sat must be passed!'))
+            assert(FiberInitError(
+                'Not enought parameters to initialise amplification fiber: both small_signal_gain and E_sat must be passed!'))
 
         self.linearity = Linearity(alpha, beta, sim_type,
                                    use_cache, centre_omega, amplifier=self.amplifier)
@@ -93,6 +104,7 @@ class Fibre(object):
 
         class Function():
             """ Class to hold linear and nonlinear functions. """
+
             def __init__(self, l, n, linear, nonlinear):
                 self.l = l
                 self.n = n
@@ -108,7 +120,7 @@ class Fibre(object):
             return 'None' if x is None else x
 
         def get_beta_by_i(i):
-            if beta is not None: 
+            if beta is not None:
                 if i > len(beta) - 1:
                     return 'None'
                 else:
@@ -117,21 +129,22 @@ class Fibre(object):
                 return 'None'
 
         file_import_arguments = {'alpha': check_if_None(alpha), 'beta2': get_beta_by_i(2), 'beta3': get_beta_by_i(3),
-                                 'gamma': gamma, 'small_signal_gain': check_if_None(small_signal_gain), 'E_sat': check_if_None(E_sat)} 
+                                 'gamma': gamma, 'small_signal_gain': check_if_None(small_signal_gain), 'E_sat': check_if_None(E_sat)}
         self.stepper = Stepper(traces, local_error, method, self.function,
                                self.length, total_steps, dir,
                                **file_import_arguments)
 
     def __call__(self, domain, field):
-        self.linearity(domain) #__call__ -> generate_linearity(domain) -> getattr -> default_linearity
+        # __call__ -> generate_linearity(domain) -> getattr -> default_linearity
+        self.linearity(domain)
         self.nonlinearity(domain)
-
+        self.calculate_refrence_length(domain, field)
         # Set temporal and spectral arrays for storage:
         self.stepper.storage.t = domain.t
         self.stepper.storage.nu = domain.nu
 
         # Propagate field through fibre:
-        return self.stepper(field)
+        return self.stepper(field, self.refrence_length)
 
     def l(self, A, z):
         """ Linear term. """
@@ -148,6 +161,30 @@ class Fibre(object):
     def nonlinear(self, A, h, B):
         """ Nonlinear term in exponential factor. """
         return self.nonlinearity.exp_non(A, h, B)
+
+    def calculate_refrence_length(self, domain, field):
+        temp_power = abs(field) ** 2
+        d_t = abs(domain.t[1] - domain.t[0])
+        P_0 = amax(temp_power)
+        peaks, _ = find_peaks(temp_power, height=0)
+        results_half = peak_widths(temp_power, peaks, rel_height=1)
+        T_0 = d_t * amax(results_half[0])
+        if (self.beta_2 is not None):
+            self.L_D = T_0**2 / (10**3 * self.beta_2)
+        if (self.gamma is not None):
+            self.L_NL = 1 / (self.gamma * P_0)
+        if (self.L_NL and self.L_D is not None):
+            self.refrence_length = min(self.L_NL, self.L_D)
+        elif (self.L_NL or self.L_D is None):
+            self.refrence_length = None
+        else:
+            self.refrence_length = self.L_NL if self.L_D is None else self.L_D
+
+    def print_refrence_length(self, domain, field):
+        self.calculate_refrence_length(domain, field)
+        print("L_NL = ", self.L_NL)
+        print("L_D = ", self.L_D)
+
 
 if __name__ == "__main__":
     """
@@ -167,27 +204,27 @@ if __name__ == "__main__":
     gaussian = Gaussian(peak_power=1.0, width=1.0)
 
     P_ts = []
-    methods = ['ss_simple', 
-            'ss_symmetric', 'ss_symmetric+ss', 'ss_symmetric+raman',  'ss_symmetric+all',  
-            'ss_sym_rk4', 
-            'rk4ip', 'rk4ip+ss', 'rk4ip+raman', 'rk4ip+all']
+    methods = ['ss_simple',
+               'ss_symmetric', 'ss_symmetric+ss', 'ss_symmetric+raman',  'ss_symmetric+all',
+               'ss_sym_rk4',
+               'rk4ip', 'rk4ip+ss', 'rk4ip+raman', 'rk4ip+all']
 
     for m in methods:
         sys = System(domain)
         sys.add(gaussian)
         if m.count('+') == 0:
             sys.add(Fibre(length=5.0, method=m, total_steps=50,
-                      beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0))
+                          beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0))
         else:
             if m.split('+')[1] == 'ss':
                 sys.add(Fibre(length=5.0, method=m.split('+')[0], total_steps=50,
-                      beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0, self_steepening=True))
+                              beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0, self_steepening=True))
             elif m.split('+')[1] == 'raman':
                 sys.add(Fibre(length=5.0, method=m.split('+')[0], total_steps=50,
-                      beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0, use_all='hollenbeck'))
+                              beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0, use_all='hollenbeck'))
             else:
                 sys.add(Fibre(length=5.0, method=m.split('+')[0], total_steps=50,
-                      beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0, self_steepening=True, use_all='hollenbeck'))
+                              beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0, self_steepening=True, use_all='hollenbeck'))
 
         start = time.time()
         sys.run()

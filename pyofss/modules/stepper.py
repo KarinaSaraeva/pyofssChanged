@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2011, 2012  David Bolt
 
@@ -27,6 +26,8 @@ from .storage import Storage
 from .solver import Solver
 
 # Define exceptions
+
+
 class StepperError(Exception):
     pass
 
@@ -76,20 +77,21 @@ class Stepper(object):
       * >1 -- Store A for each succesful step then use interpolation to get A
          values for equally spaced z-values, calculated using traces.
     """
+
     def __init__(self, traces=1, local_error=1.0e-6, method="RK4",
-                 f=None, length=1.0, total_steps=100, dir = None, **file_import_arguments):
+                 f=None, length=1.0, total_steps=100, dir=None, **file_import_arguments):
         self.traces = traces
         self.local_error = local_error
 
         # Check if adaptive stepsize is required:
-        if method.upper().startswith('A'):
+        if method.upper().startswith("A"):
             self.adaptive = True
             self.method = method[1:]
         else:
             self.adaptive = False
             self.method = method
 
-        #~print "Using {0} method".format( self.method )
+        # ~print "Using {0} method".format( self.method )
 
         # Delegate method and function to solver
         self.solver = Solver(self.method, f)
@@ -99,13 +101,13 @@ class Stepper(object):
         self.total_steps = total_steps
 
         # Use a list of tuples ( z, A(z) ) for dense output if required:
-        file_import_arguments['length'] = self.length
+        file_import_arguments["length"] = self.length
         self.storage = Storage(dir, **file_import_arguments)
 
         # Store constants for adaptive method:
         self.total_attempts = 100
         self.steps_max = 100000
-        self.step_size_min = 1e-37 # some small value
+        self.step_size_min = 1e-37  # some small value
 
         self.safety = 0.9
         self.max_factor = 10.0
@@ -116,26 +118,32 @@ class Stepper(object):
 
         self.A_out = None
 
-    def __call__(self, A):
+    def __call__(self, A, refrence_length):
         """ Delegate to appropriate function, adaptive- or standard-stepper """
 
         self.storage.reset_fft_counter()
         self.storage.reset_array()
 
         if self.adaptive:
-            return self.adaptive_stepper(A)
+            return self.adaptive_stepper(A, refrence_length)
         else:
-            return self.standard_stepper(A)
+            return self.standard_stepper(A, refrence_length)
 
-    def standard_stepper(self, A):
+    def standard_stepper(self, A, refrence_length):
         """ Take a fixed number of steps, each of equal length """
-        #~print( "Starting ODE integration with fixed step-size... " ),
+        # ~print( "Starting ODE integration with fixed step-size... " ),
 
         # Initialise:
         self.A_out = A
 
         # Require an initial step-size:
         h = self.length / self.total_steps
+        if h > refrence_length * (10 ** (-5)):
+            raise SmallStepSizeError(
+                f"h must be much less than dispersion length (L_D) and the nonlinear length (L_NL)\n        \
+                now now the minimum of the characteristic distances is equal to {refrence_length:.6f}*km* \n         \
+                step is equal to {h}*km*"
+            )
 
         # Construct mesh points for z:
         zs = np.linspace(0.0, self.length, self.total_steps + 1)
@@ -154,7 +162,7 @@ class Stepper(object):
 
         for i, z in enumerate(tqdm(zs[:-1])):
             # Currently at L = z
-    
+
             if self.solver.embedded:
                 self.A_out, A_other = self.step(self.A_out, z, h)
             else:
@@ -183,7 +191,7 @@ class Stepper(object):
         # Large step can result in infs or NaNs values
         # so, check it first
         if np.isnan(A_fine).any() or np.isinf(A_fine).any():
-            return 1.
+            return 1.0
 
         norm_fine = linalg.norm(A_fine)
 
@@ -193,10 +201,10 @@ class Stepper(object):
         else:
             return linalg.norm(A_fine - A_coarse)
 
-    def adaptive_stepper(self, A):
+    def adaptive_stepper(self, A, refrence_length):
         """ Take multiple steps, with variable length, until target reached """
 
-        #~print( "Starting ODE integration with adaptive step-size... " ),
+        # ~print( "Starting ODE integration with adaptive step-size... " ),
 
         # Initialise:
         self.A_out = A
@@ -254,11 +262,13 @@ class Stepper(object):
 
                 # Adjust stepsize for next step:
                 if delta > 0.0:
-                    error_ratio = (self.local_error / delta)
-                    factor = \
-                        self.safety * np.power(error_ratio, 1.0 / self.eta)
-                    h = h_temp * min(self.max_factor,
-                                     max(self.min_factor, factor))
+                    error_ratio = self.local_error / delta
+                    factor = self.safety * np.power(
+                        error_ratio, 1.0 / self.eta
+                    )
+                    h = h_temp * min(
+                        self.max_factor, max(self.min_factor, factor)
+                    )
                 else:
                     # Error approximately zero, so use largest stepsize
                     # increase:
@@ -292,10 +302,20 @@ class Stepper(object):
                 # but check the minimal step size first
                 else:
                     if h < self.step_size_min:
-                        raise SmallStepSizeError("Step size is extremely small")
+                        raise SmallStepSizeError(
+                            "Step size is extremely small"
+                        )
+                    if h > refrence_length * (10 ** (-5)):
+                        raise SmallStepSizeError(
+                            f"h must be much less than dispersion length (L_D) and the nonlinear length (L_NL)\n        \
+                            now now the minimum of the characteristic distances is equal to {refrence_length}*km* \n         \
+                            step is equal to {h}*km*"
+                        )
 
             else:
-                raise SuitableStepSizeError("Failed to set suitable step-size")
+                raise SuitableStepSizeError(
+                    "Failed to set suitable step-size"
+                )
 
             # If the desired z has been reached, then finish:
             if z >= self.length:
@@ -308,12 +328,15 @@ class Stepper(object):
 
                 return self.A_out
 
-        raise MaximumStepsAllocatedError("Failed to complete with maximum steps allocated")
+        raise MaximumStepsAllocatedError(
+            "Failed to complete with maximum steps allocated"
+        )
+
 
 if __name__ == "__main__":
     """
     Exact solution: A(z) = 0.5 * ( 5.0 * exp(-2.0 * z) - 3.0 * exp(-4.0 * z) )
-    A(0) = 1.0
+    A(0) = 1.0 
     A(0.5) = 0.71669567807368684
     Numerical solution (RK4, total_steps = 5):      0.71668876283331295
     Numerical solution (RK4, total_steps = 50):     0.71669567757603803
@@ -328,8 +351,9 @@ if __name__ == "__main__":
         """ Just a simple function. """
         return 3.0 * np.exp(-4.0 * z) - 2.0 * A
 
-    stepper = Stepper(f=simple, length=0.5, total_steps=50,
-                      method="RKF", traces=50)
+    stepper = Stepper(
+        f=simple, length=0.5, total_steps=50, method="RKF", traces=50
+    )
     A_in = 1.0
     A_out = stepper(A_in)
     print("A_out = %.17f" % (A_out))
@@ -337,10 +361,10 @@ if __name__ == "__main__":
     x = stepper.storage.z
     y = stepper.storage.As
 
-    title = r'$\frac{dA}{dz} + 2A = 3 e^{-4z}$'
-    plt.title(r'Numerical integration of ODE:' + title)
-    plt.xlabel('z')
-    plt.ylabel('A(z)')
-    plt.plot(x, y, label='RKF: 50 steps')
+    title = r"$\frac{dA}{dz} + 2A = 3 e^{-4z}$"
+    plt.title(r"Numerical integration of ODE:" + title)
+    plt.xlabel("z")
+    plt.ylabel("A(z)")
+    plt.plot(x, y, label="RKF: 50 steps")
     plt.legend()
     plt.show()

@@ -176,8 +176,11 @@ def single_plot(x, y, x_label="", y_label="", label="",
     Generate a single plot.
     """
     print("\nGenerating single_plot...")
-    plt.clf()
     fig = plt.figure()
+    # Disable the resizing feature
+    fig.canvas.resizable = True
+    # Change the toolbar position
+    fig.canvas.toolbar_position = 'top'
     ax1 = fig.add_subplot(111)
     ax1.plot(x, y, style, label=label)
 
@@ -205,8 +208,6 @@ def single_plot(x, y, x_label="", y_label="", label="",
     if filename:
         plt.savefig(filename)
         print("Wrote file", filename)
-    else:
-        plt.show()
 
 
 def double_plot(x, y, X, Y, x_label="", y_label="", X_label="",
