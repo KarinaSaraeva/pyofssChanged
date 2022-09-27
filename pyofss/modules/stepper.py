@@ -138,7 +138,7 @@ class Stepper(object):
 
         # Require an initial step-size:
         h = self.length / self.total_steps
-        if h > refrence_length * (10 ** (-5)):
+        if h > refrence_length * (10 ** (-2)):
             raise SmallStepSizeError(
                 f"h must be much less than dispersion length (L_D) and the nonlinear length (L_NL)\n        \
                 now now the minimum of the characteristic distances is equal to {refrence_length:.6f}*km* \n         \
@@ -305,7 +305,7 @@ class Stepper(object):
                         raise SmallStepSizeError(
                             "Step size is extremely small"
                         )
-                    if h > refrence_length * (10 ** (-5)):
+                    if h > refrence_length * (10 ** (-2)):
                         raise SmallStepSizeError(
                             f"h must be much less than dispersion length (L_D) and the nonlinear length (L_NL)\n        \
                             now now the minimum of the characteristic distances is equal to {refrence_length}*km* \n         \

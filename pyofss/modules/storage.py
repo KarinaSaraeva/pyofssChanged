@@ -167,7 +167,7 @@ class Storage(object):
         if dir is not None:
             self.dir = dir
             check_dir(self.dir)
-        elif self.dir is not None:
+        elif self.dir is None:
             raise DirExistenceError("directory must be specified!")
 
     def save_all_storage_to_dir(
@@ -260,6 +260,7 @@ class Storage(object):
         self.check_dir_specified(dir)
         z = np.zeros(len(os.listdir(self.dir)))
         y = None
+        x = None
 
         list = os.listdir(self.dir)
 
@@ -354,9 +355,7 @@ class Storage(object):
         channel=None,
     ):
         if self.plt_data is None:
-            self.get_plot_data(
-                is_temporal, reduced_range, normalised, channel
-            )
+            self.get_plot_data(is_temporal, reduced_range, normalised, channel)
 
         fig = plt.figure()
         ax = plt.axes()
@@ -378,9 +377,7 @@ class Storage(object):
         anim = animation.FuncAnimation(
             fig,
             animate,
-            frames=np.linspace(
-                0, len(self.plt_data[2]), len(self.plt_data[2])
-            ),
+            frames=np.linspace(0, len(self.plt_data[2]), len(self.plt_data[2])),
             init_func=init,
             interval=50,
             blit=True,
