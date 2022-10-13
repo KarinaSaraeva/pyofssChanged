@@ -34,8 +34,9 @@ class Amplifier(object):
 
     Simple amplifier provides gain but no noise
     """
+
     def __init__(self, name="amplifier", gain=None,
-                 E_sat=None, P_sat=None, rep_rate=None, length = 1.0, steps = 1):
+                 E_sat=None, P_sat=None, rep_rate=None, length=1.0, steps=1):
 
         self.total_steps = steps
         self.length = length
@@ -44,7 +45,8 @@ class Amplifier(object):
             raise Exception("The gain is not defined.")
 
         if (P_sat is not None) and (E_sat is not None):
-            raise Exception("There should be only one parameter of saturation.")
+            raise Exception(
+                "There should be only one parameter of saturation.")
 
         self.name = name
         self.gain = gain
@@ -54,12 +56,12 @@ class Amplifier(object):
         elif P_sat is not None:
             if rep_rate is None:
                 raise Exception("Repetition rate is not defined.")
-            self.E_sat = 1e3*P_sat/rep_rate   #nJ
+            self.E_sat = 1e3*P_sat/rep_rate  # nJ
         else:
             self.E_sat = None
         self.field = None
 
-    def __call__(self, field, step = 1):
+    def __call__(self, field, step=1):
         # Convert field to spectral domain:
         self.field = fft(field)
 
@@ -81,25 +83,14 @@ class Amplifier(object):
         # convert field back to temporal domain:
         return ifft(self.field)
 
-    def exp_lin(self, A, h, field):
-        M = np.log(power(10, 0.1 * self.gain))
-        G = (M*h) / (2*self.length)
-        if self.E_sat is not None:
-            E = energy(A, self.domain.t)
-            G = G/(1.0 + E/self.E_sat)
-        hf = G
-        return np.exp(hf) * (field)
-
     def factor(self, A, h):
         M = np.log(power(10, 0.1 * self.gain))
         G = (M*h) / (2*self.length)
         if self.E_sat is not None:
             E = energy(A, self.domain.t)
-            factor = G/(1.0 + E/self.E_sat)
+            G = G/(1.0 + E/self.E_sat)
         factor = G
         return factor
 
     def setDomain(self, domain):
         self.domain = domain
-
-

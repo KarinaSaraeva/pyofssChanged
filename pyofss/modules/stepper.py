@@ -17,6 +17,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+import warnings
 import numpy as np
 from scipy import linalg
 from tqdm import tqdm
@@ -139,7 +140,7 @@ class Stepper(object):
         # Require an initial step-size:
         h = self.length / self.total_steps
         if h > refrence_length * (10 ** (-2)):
-            raise SmallStepSizeError(
+            warnings.warn(
                 f"h must be much less than dispersion length (L_D) and the nonlinear length (L_NL)\n        \
                 now now the minimum of the characteristic distances is equal to {refrence_length:.6f}*km* \n         \
                 step is equal to {h}*km*"
@@ -173,7 +174,6 @@ class Stepper(object):
             # value:
             if self.traces != 1:
                 self.storage.append(z + h, self.A_out)
-                self.storage.save_step_to_file()
 
         # Store total number of fft and ifft operations that were used:
         self.storage.store_current_fft_count()
@@ -181,6 +181,9 @@ class Stepper(object):
         # Need to interpolate dense output to grid points set by traces:
         if self.traces > 1 and (self.traces != self.total_steps):
             self.storage.interpolate_As_for_z_values(trace_zs)
+
+        if (self.storage.dir):
+            self.storage.save_all_storage_to_dir()
 
         return self.A_out
 
@@ -306,9 +309,9 @@ class Stepper(object):
                             "Step size is extremely small"
                         )
                     if h > refrence_length * (10 ** (-2)):
-                        raise SmallStepSizeError(
+                        warnings.warn(
                             f"h must be much less than dispersion length (L_D) and the nonlinear length (L_NL)\n        \
-                            now now the minimum of the characteristic distances is equal to {refrence_length}*km* \n         \
+                            now now the minimum of the characteristic distances is equal to {refrence_length:.6f}*km* \n         \
                             step is equal to {h}*km*"
                         )
 

@@ -22,6 +22,7 @@
 import numpy as np
 import scipy.fftpack
 import scipy.integrate as integrate
+from scipy.signal import find_peaks, peak_widths
 
 try:
     import pyfftw
@@ -35,6 +36,7 @@ except:
 # Although use of global variables is generally a bad idea, in this case it is
 # a simple solution to recording the number of ffts used:
 fft_counter = 0
+
 
 def temporal_power(A_t, normalise=False):
     """
@@ -153,16 +155,17 @@ def fftshift(A_nu):
     """
     return scipy.fftpack.ifftshift(A_nu)
 
+
 def energy(A_t, t):
     """
     :param array_like A_t: Input field array in the temporal domain
     :param double t: Temporal window of the simulation
     :return: Energy of the field
     :rtype: double
-    
+
     Energy calculation
     """
-    E = integrate.simps(temporal_power(A_t), t*1e-3) #nJ
+    E = integrate.simps(temporal_power(A_t), t*1e-3)  # nJ
 
     return E
 
@@ -172,23 +175,25 @@ def inst_freq(A_t, dt):
     :param array_like A_t: Input field array in the temporal domain
     :return: Instant frequency array
     :rtype: array_like
-    
+
     Generate an array of instantaneous frequency
     """
     ph = phase(A_t)
     return np.append(np.diff(ph)/dt, 0.)
 
+
 def loss_infrared_db(wl):
     """
     :param wavelength, nm
     :return: losses in dB
-    
+
     See Agrawal "Fiber-Optic Communication Systems" ch2 page 56
     x = [1500, 1600, 1650, 1700, 1750, 1800] wavelengths
     y = [0.01, 0.05, 0.1, 0.3, 1, 2.5] losses in dB
     """
     p = np.array([-1.75292532e+03,  1.95607318e-02])
     return np.exp(p[1]*(wl+p[0]))
+
 
 def loss_rayleigh_db(wl):
     """
@@ -202,3 +207,25 @@ def loss_rayleigh_db(wl):
     factor = -10*np.log10(factor)
     return factor
 
+
+def max_peak_params(P):
+    """
+    :param power array *Unit: W*
+
+    :return: 
+    param double power_max: maximum power *Unit: W*,  
+    param double pulse_fwhm: FWHM *Unit: input arr indexes*, 
+    param double left_ind, right_ind: interpolated positions of left and right intersection points of a FWHM line *Unit: input arr indexes*,
+    """
+    peaks, _ = find_peaks(P, height=0, prominence=1e-20)
+    results_fwhm = peak_widths(P, peaks, rel_height=0.5)
+
+    ind_max = np.argmax(results_fwhm[1])
+
+    heigth_fwhm = results_fwhm[1][ind_max]
+    fwhm = results_fwhm[0][ind_max]  # the hightest peak's fwhm
+
+    left_ind = results_fwhm[2][ind_max]
+    right_ind = results_fwhm[3][ind_max]
+
+    return heigth_fwhm, fwhm, left_ind, right_ind

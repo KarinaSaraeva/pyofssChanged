@@ -49,6 +49,7 @@ from .modules.delay import Delay
 from .modules.dispersion import Dispersion
 from .modules.static_pump_wdm import StaticPumpWDM
 from .modules.storage import Storage
+from .modules.fibre_plotter import FibrePlotter
 
 try:
     from .modules.opencl_fibre import OpenclFibre

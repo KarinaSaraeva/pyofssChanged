@@ -23,11 +23,8 @@ import os
 import warnings
 
 from pyofss import field
-from pyofss.field import temporal_power
-from pyofss.field import spectral_power
+from pyofss.field import temporal_power, spectral_power
 
-import matplotlib.animation as animation
-from matplotlib import pyplot as plt
 import pandas as pd
 
 
@@ -187,9 +184,7 @@ class Storage(object):
                                        **file_import_arguments,
                                        )
 
-    def save_step_to_file(
-        self, is_temporal=True, channel=None, i=-1, **file_import_arguments
-    ):
+    def save_step_to_file(self, is_temporal=True, channel=None, i=-1, **file_import_arguments):
         if self.dir is not None:
             if is_temporal:
                 x = self.t
@@ -203,10 +198,8 @@ class Storage(object):
             if channel is None:
                 temp = self.As[i]
                 y = temp
-                df = pd.DataFrame(
-                    np.column_stack([x, calculate_power(y)]),
-                    columns=[x_label, "P"],
-                )
+                df = pd.DataFrame(np.column_stack(
+                    [x, calculate_power(y)]), columns=[x_label, "P"])
                 file_name = os.path.join(
                     self.dir,
                     f"z{i if i!=-1 else len(self.z)}_{self.z[i]*1e6:.2f}mm.csv",
@@ -346,43 +339,6 @@ class Storage(object):
         z = self.z
         self.plt_data = (x, y, z)
         return (x, y, z)
-
-    def draw_animation(
-        self,
-        is_temporal=True,
-        reduced_range=None,
-        normalised=False,
-        channel=None,
-    ):
-        if self.plt_data is None:
-            self.get_plot_data(is_temporal, reduced_range, normalised, channel)
-
-        fig = plt.figure()
-        ax = plt.axes()
-        (line,) = ax.plot([], [], lw=2)
-
-        def init():
-            line.set_data([], [])
-            ax.set_xlim(np.amin(self.plt_data[0]), np.amax(self.plt_data[0]))
-            ax.set_ylim(0, np.amax(self.plt_data[1]))
-            return (line,)
-
-        x = self.plt_data[0]
-
-        def animate(i):
-            y = self.plt_data[1][int(i)]
-            line.set_data(x, y)
-            return (line,)
-
-        anim = animation.FuncAnimation(
-            fig,
-            animate,
-            frames=np.linspace(0, len(self.plt_data[2]), len(self.plt_data[2])),
-            init_func=init,
-            interval=50,
-            blit=True,
-        )
-        return anim
 
     @staticmethod
     def find_nearest(array, value):
