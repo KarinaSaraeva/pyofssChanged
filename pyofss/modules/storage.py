@@ -98,9 +98,8 @@ def check_dir(dir_name):
         os.makedirs(dir_name)
         print("Directory: ", dir_name, " is created!")
     else:
-        print("Directory: ", dir_name, " found...")
         if not os.listdir(dir_name):
-            print("Directory is empty OK")
+            print("Directory is empty")
         else:
             warnings.warn("Directory is not empty")
 
@@ -118,10 +117,18 @@ class Storage(object):
     functions to modify the stored data.
     """
 
-    def __init__(self, dir=None, **file_import_arguments):
+    def __init__(self, dir=None, cycle=None, fibre_name=None, **file_import_arguments):
         if dir is not None:
-            check_dir(dir)
-        self.dir = dir
+            self.dir_temp = os.path.join(dir, "temp")
+            self.dir_spec = os.path.join(dir, "spec")
+            check_dir(self.dir_temp)
+            check_dir(self.dir_spec)
+        else:
+            self.dir_temp = None
+            self.dir_spec = None
+
+        self.cycle = cycle
+        self.fibre_name = fibre_name
         self.plt_data = None
         self.t = []
         self.As = []
@@ -160,40 +167,67 @@ class Storage(object):
         self.z.append(z)
         self.As.append(A)
 
-    def check_dir_specified(self, dir):
-        if dir is not None:
-            self.dir = dir
-            check_dir(self.dir)
-        elif self.dir is None:
-            raise DirExistenceError("directory must be specified!")
-
     def save_all_storage_to_dir(
         self,
         is_temporal=True,
         channel=None,
-        dir=None,
         **file_import_arguments,
     ):
-        self.check_dir_specified(dir)
+        for i in range(len(self.As)):
+            self.save_step_to_file(is_temporal=is_temporal,
+                                   channel=channel,
+                                   i=i,
+                                   **file_import_arguments,
+                                   )
 
-        if self.dir is not None:
-            for i in range(len(self.As)):
-                self.save_step_to_file(is_temporal=is_temporal,
-                                       channel=channel,
-                                       i=i,
-                                       **file_import_arguments,
-                                       )
+    def save_all_storage_to_dir_as_df(
+        self,
+        is_temporal=True,
+        channel=None,
+    ):
+        if self.dir_temp and self.dir_spec is not None:
+            if is_temporal:
+                dir = self.dir_temp
+            else:
+                dir = self.dir_spec
+
+            (x, y, z) = self.get_plot_data(is_temporal=is_temporal)
+            iterables = [z*10**6]
+            index = pd.MultiIndex.from_product(iterables, names=["z [mm]"])
+            df1 = pd.DataFrame(y, index=index)
+            file_name = os.path.join(dir, f"{self.fibre_name}.csv")
+            with open(file_name, "w") as f:
+                df1.to_csv(file_name)
+
+    def get_df(
+        self,
+        is_temporal=True,
+        z_curr=0,
+        channel=None,
+    ):
+        (x, y, z) = self.get_plot_data(is_temporal=is_temporal)
+        arr_z = np.array(z)*10**6 + z_curr
+        if self.cycle and self.fibre_name is not None:
+            iterables = [[self.cycle], [self.fibre_name], arr_z]
+            index = pd.MultiIndex.from_product(
+                iterables,  names=["cycle", "fibre", "z [mm]"])
+        else:
+            iterables = [z*10**6]
+            index = pd.MultiIndex.from_product(iterables, names=["z [mm]"])
+        return pd.DataFrame(y, index=index)
 
     def save_step_to_file(self, is_temporal=True, channel=None, i=-1, **file_import_arguments):
-        if self.dir is not None:
+        if self.dir_temp and self.dir_spec is not None:
             if is_temporal:
                 x = self.t
                 x_label = "t"
                 calculate_power = temporal_power
+                dir = self.dir_temp
             else:
                 x = self.nu
                 x_label = "nu"
                 calculate_power = spectral_power
+                dir = self.dir_spec
 
             if channel is None:
                 temp = self.As[i]
@@ -201,7 +235,7 @@ class Storage(object):
                 df = pd.DataFrame(np.column_stack(
                     [x, calculate_power(y)]), columns=[x_label, "P"])
                 file_name = os.path.join(
-                    self.dir,
+                    dir,
                     f"z{i if i!=-1 else len(self.z)}_{self.z[i]*1e6:.2f}mm.csv",
                 )
                 with open(file_name, "w") as f:
@@ -249,13 +283,17 @@ class Storage(object):
 
         return z_current
 
-    def read_all_from_dir(self, dir=None):
-        self.check_dir_specified(dir)
-        z = np.zeros(len(os.listdir(self.dir)))
+    def read_all_from_dir(self, is_temporal=True,):
+        if is_temporal:
+            dir = self.dir_temp
+        else:
+            dir = self.dir_spec
+
+        z = np.zeros(len(os.listdir(dir)))
         y = None
         x = None
 
-        list = os.listdir(self.dir)
+        list = os.listdir(dir)
 
         def sorting_func(name):
             name = name.replace("z", "")
@@ -268,7 +306,7 @@ class Storage(object):
 
         for i in range(len(list)):
             commentlines = []
-            filename = os.path.join(self.dir, list[i])
+            filename = os.path.join(dir, list[i])
             with open(filename) as f:
                 for line in f:
                     if line.startswith("#"):

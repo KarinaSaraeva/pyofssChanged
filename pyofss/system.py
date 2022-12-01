@@ -27,15 +27,19 @@ except ImportError:
 
 
 import numpy as np
+import pandas as pd
+import os
 
 from .domain import Domain
+from .modules.fibre import Fibre
+from .modules.storage import check_dir
 
 
-def field_save(field, filename = 'field_out'):
+def field_save(field, filename='field_out'):
     np.savez_compressed(filename, field=field)
 
 
-def field_load(filename = 'field_out'):
+def field_load(filename='field_out'):
     if filename.endswith(".npz"):
         d = np.load(filename)['field']
     elif filename.endswith(".npy"):
@@ -47,6 +51,7 @@ def field_load(filename = 'field_out'):
             d = np.load(filename + '.npy')
     return d
 
+
 class System(object):
     """
     :param object domain: A domain to be used with contained modules
@@ -57,12 +62,15 @@ class System(object):
     domain and field as parameters. The result of each module call is stored
     in a dictionary.
     """
+
     def __init__(self, domain=Domain(), field=None):
         self.domain = domain
         self.field = None
         self.fields = None
         self.modules = None
         self.clear(remove_modules=True)
+        self.df_temp = None
+        self.df_spec = None
 
         if field is not None:
             self.field = field
@@ -100,6 +108,58 @@ class System(object):
 
         raise Exception("Tried to modify non-existing module in system")
 
+    def init_df(self, is_temporal=True):
+        df = pd.DataFrame()
+        z_curr = 0
+        for obj in self.modules:
+            if type(obj) is Fibre:
+                df_new = obj.stepper.storage.get_df(
+                    z_curr=z_curr, is_temporal=is_temporal)
+                z_curr = df_new.iloc[-1].name[2]
+                # concatenate dataframes that were received from different fibres
+                df = pd.concat([df, df_new])
+        if is_temporal:
+            self.df_temp = df
+        else:
+            self.df_spec = df
+
+    # save the whole laser dataframe only if needed
+    def save_df_to_csv(self, dir, name="laser", is_temporal=True):
+        check_dir(dir)
+        if is_temporal:
+            if self.df_temp is None:
+                self.init_df(is_temporal=is_temporal)
+            file_name = os.path.join(dir, name + "_temp.csv")
+            with open(file_name, "w") as f:
+                self.df_temp.to_csv(file_name)
+        else:
+            if self.df_spec is None:
+                self.init_df(is_temporal=is_temporal)
+            file_name = os.path.join(dir, name + "_spec.csv")
+            with open(file_name, "w") as f:
+                self.df_spec.to_csv(file_name)
+
+    def get_last_cycle_df(self, df_laser):
+        cycle_names = list(
+            set(df_laser.index.get_level_values('cycle').values))
+        cycle_names.sort()
+        return df_laser.loc[(cycle_names[-1])]
+
+    def save_last_cycle_df_to_csv(self, dir, name="last_cycle", is_temporal=True):
+        check_dir(dir)
+        if is_temporal:
+            if self.df_temp is None:
+                self.init_df(is_temporal=is_temporal)
+            file_name = os.path.join(dir, name + "_temp.csv")
+            with open(file_name, "w") as f:
+                self.get_last_cycle_df(self.df_temp).to_csv(file_name)
+        else:
+            if self.df_spec is None:
+                self.init_df(is_temporal=is_temporal)
+            file_name = os.path.join(dir, name + "_spec.csv")
+            with open(file_name, "w") as f:
+                self.get_last_cycle_df(self.df_spec).to_csv(file_name)
+
     def run(self):
         """
         Propagate field through each module, with the resulting field at the
@@ -110,3 +170,4 @@ class System(object):
             self.field = module(self.domain, self.field)
             self.fields[module.name] = self.field
 
+        self.init_df()

@@ -74,7 +74,7 @@ class Fibre(object):
                  self_steepening=False, raman_scattering=False,
                  rs_factor=0.003, use_all=False, centre_omega=None,
                  tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18, small_signal_gain=None,
-                 E_sat=None, dir=None):
+                 E_sat=None, dir=None, save_represent = "temporal", cycle = None):
 
         use_cache = not(method.upper().startswith('A'))
 
@@ -86,6 +86,7 @@ class Fibre(object):
         self.L_D = None
         self.L_NL = None
         self.refrence_length = None
+        self.cycle = cycle
 
         if (small_signal_gain is not None) and (E_sat is not None):
             self.amplifier = Amplifier(
@@ -131,7 +132,7 @@ class Fibre(object):
         file_import_arguments = {'alpha': check_if_None(alpha), 'beta2': get_beta_by_i(2), 'beta3': get_beta_by_i(3),
                                  'gamma': gamma, 'small_signal_gain': check_if_None(small_signal_gain), 'E_sat': check_if_None(E_sat)}
         self.stepper = Stepper(traces, local_error, method, self.function,
-                               self.length, total_steps, dir,
+                               self.length, total_steps, dir, save_represent, name = self.name, cycle = self.cycle, fibre_name=self.name,
                                **file_import_arguments)
 
     def __call__(self, domain, field):

@@ -20,7 +20,7 @@
 import warnings
 import numpy as np
 from scipy import linalg
-from tqdm import tqdm
+# from tqdm import tqdm
 from pyofss.field import temporal_power
 
 from .storage import Storage
@@ -80,10 +80,12 @@ class Stepper(object):
     """
 
     def __init__(self, traces=1, local_error=1.0e-6, method="RK4",
-                 f=None, length=1.0, total_steps=100, dir=None, **file_import_arguments):
+                 f=None, length=1.0, total_steps=100, dir=None, save_represent="temporal", cycle=None, fibre_name=None, **file_import_arguments):
         self.traces = traces
         self.local_error = local_error
-
+        self.save_represent = save_represent
+        self.cycle = cycle
+        self.fibre_name = fibre_name
         # Check if adaptive stepsize is required:
         if method.upper().startswith("A"):
             self.adaptive = True
@@ -103,7 +105,7 @@ class Stepper(object):
 
         # Use a list of tuples ( z, A(z) ) for dense output if required:
         file_import_arguments["length"] = self.length
-        self.storage = Storage(dir, **file_import_arguments)
+        self.storage = Storage(dir, cycle=self.cycle, fibre_name=self.fibre_name, **file_import_arguments)
 
         # Store constants for adaptive method:
         self.total_attempts = 100
@@ -154,14 +156,12 @@ class Stepper(object):
             trace_zs = np.linspace(0.0, self.length, self.traces + 1)
 
         # Make sure to store the initial A if more than one trace is required:
-        if self.traces != 1:
-            self.storage.append(zs[0], self.A_out)
-            self.storage.save_step_to_file()
 
         # Start at z = 0.0 and repeat until z = length - h (inclusive),
         # i.e. z[-1]
 
-        for i, z in enumerate(tqdm(zs[:-1])):
+        # for i, z in enumerate(tqdm(zs[:-1])):
+        for i, z in enumerate(zs[:-1]):
             # Currently at L = z
 
             if self.solver.embedded:
@@ -182,8 +182,18 @@ class Stepper(object):
         if self.traces > 1 and (self.traces != self.total_steps):
             self.storage.interpolate_As_for_z_values(trace_zs)
 
-        if (self.storage.dir):
-            self.storage.save_all_storage_to_dir()
+        if (self.storage.dir_spec and self.storage.dir_temp):
+            if (self.save_represent == "both"):
+                self.storage.save_all_storage_to_dir_as_df(
+                    is_temporal=True)
+                self.storage.save_all_storage_to_dir_as_df(
+                    is_temporal=False)
+            elif (self.save_represent == "spectral"):
+                self.storage.save_all_storage_to_dir_as_df(
+                    is_temporal=False)
+            elif (self.save_represent == "temporal"):
+                self.storage.save_all_storage_to_dir_as_df(
+                    is_temporal=True)
 
         return self.A_out
 
@@ -236,7 +246,8 @@ class Stepper(object):
             self.storage.append(z, self.A_out)
 
         # Limit the number of steps in case of slowly converging runs:
-        for s in tqdm(range(1, self.steps_max)):
+        # for s in tqdm(range(1, self.steps_max)):
+        for s in (range(1, self.steps_max)):
             # If step-size takes z our of range [0.0, length], then correct it:
             if (z + h) > self.length:
                 h = self.length - z
@@ -309,7 +320,7 @@ class Stepper(object):
                             "Step size is extremely small"
                         )
                     if h > refrence_length * (10 ** (-2)):
-                        warnings.warn(
+                        raise SmallStepSizeError(
                             f"h must be much less than dispersion length (L_D) and the nonlinear length (L_NL)\n        \
                             now now the minimum of the characteristic distances is equal to {refrence_length:.6f}*km* \n         \
                             step is equal to {h}*km*"

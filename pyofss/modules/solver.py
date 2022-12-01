@@ -260,8 +260,8 @@ class Solver(object):
         Y_1 = f.linear(A_N1, 0.5 * h)
 
         A_N2 = np.exp(0.5 * h *
-                     (np.where(abs(Y_1) > 1.0e-5, f.n(Y_1, z) / Y_1, 0.0) +
-                      np.where(abs(A) > 1.0e-5, f.n(A, z) / A, 0.0))) * A_L
+                      (np.where(abs(Y_1) > 1.0e-5, f.n(Y_1, z) / Y_1, 0.0) +
+                       np.where(abs(A) > 1.0e-5, f.n(A, z) / A, 0.0))) * A_L
         Y_2 = f.linear(A_N2, 0.5 * h)
 
         return Y_2

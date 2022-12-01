@@ -208,7 +208,7 @@ def loss_rayleigh_db(wl):
     return factor
 
 
-def max_peak_params(P):
+def max_peak_params(P, prominence):
     """
     :param power array *Unit: W*
 
@@ -217,7 +217,7 @@ def max_peak_params(P):
     param double pulse_fwhm: FWHM *Unit: input arr indexes*, 
     param double left_ind, right_ind: interpolated positions of left and right intersection points of a FWHM line *Unit: input arr indexes*,
     """
-    peaks, _ = find_peaks(P, height=0, prominence=1e-20)
+    peaks, _ = find_peaks(P, height=0, prominence=prominence)
     results_fwhm = peak_widths(P, peaks, rel_height=0.5)
 
     ind_max = np.argmax(results_fwhm[1])
@@ -227,5 +227,42 @@ def max_peak_params(P):
 
     left_ind = results_fwhm[2][ind_max]
     right_ind = results_fwhm[3][ind_max]
+
+    return heigth_fwhm, fwhm, left_ind, right_ind
+
+
+def spectrum_width_params(P, prominence=0.0001):
+    """
+    :param power array *Unit: W*
+
+    :return: 
+    param double power_max: maximum power *Unit: W*,  
+    param double pulse_fwhm: FWHM *Unit: input arr indexes*, 
+    param double left_ind, right_ind: interpolated positions of left and right intersection points of a FWHM line *Unit: input arr indexes*,
+    """
+    def find_x(y_peak, x_peak, is_left, ydata):
+        if (is_left):
+            x = np.where(ydata < y_peak)[0]
+            boundary = np.amax(x[np.where(x < x_peak)])
+        else:
+            x = np.where(ydata < y_peak)[0]
+            boundary = np.amin(x[np.where(x > x_peak)])
+        return int(boundary)
+
+    peaks, _ = find_peaks(P, height=0, prominence=prominence)
+
+    if (len(peaks) > 1):
+        results_fwhm = peak_widths(P, [peaks[0], peaks[1]], rel_height=0.5)
+        heigth_fwhm = np.amax(P)/2
+        peaks.sort()
+        left_ind = find_x(heigth_fwhm, peaks[0], True, P)
+        right_ind = find_x(heigth_fwhm, peaks[-1], False, P)
+        fwhm = right_ind - left_ind
+    else:
+        results_fwhm = peak_widths(P, peaks, rel_height=0.5)
+        heigth_fwhm = np.amax(results_fwhm[1])
+        fwhm = results_fwhm[0]
+        left_ind = results_fwhm[2][0]
+        right_ind = results_fwhm[3][0]
 
     return heigth_fwhm, fwhm, left_ind, right_ind

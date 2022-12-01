@@ -25,7 +25,7 @@ import matplotlib.animation as animation
 
 import subprocess
 
-labels = {"t": "Time, $t \, (ps)$",
+labels = {"t": r"Time, $\t \, (ps)$",
           "nu": r"Frequency, $\nu \, (THz)$",
           "Lambda": r"Wavelength, $\lambda \, (nm)$",
           "P_t": "Power, $|A(z, t)|^2 \, (W)$",
@@ -155,7 +155,7 @@ def waterfall_plot(x, y, z, x_label="", y_label="", z_label="",
 def single_plot(x, y, x_label="", y_label="", label="",
                 x_range=None, y_range=None, use_fill=True,
                 alpha=0.2, filename="", style="b-", fill_colour="b",
-                inst_freq = None, y2_label="", y2_range=None):
+                inst_freq=None, y2_label="", y2_range=None):
     """
     :param Dvector x: First axis
     :param Dvector y: Second axis
@@ -213,7 +213,7 @@ def single_plot(x, y, x_label="", y_label="", label="",
 def double_plot(x, y, X, Y, x_label="", y_label="", X_label="",
                 Y_label="", x_range=None, y_range=None, X_range=None,
                 Y_range=None, use_fill=True, alpha=0.2, filename="",
-                inst_freq = None, y2_label="", y2_range=None):
+                inst_freq=None, y2_label="", y2_range=None):
     """
     :param Dvector x: First axis of upper plot
     :param Dvector y: Second axis of upper plot
@@ -426,7 +426,7 @@ def animated_plot(x, y, z, x_label="", y_label="", z_label="",
     Generate an animated plot, either interactive or saved as a video.
     """
     print("\nGenerating animated_plot...")
-    #~plt.clf()
+    # ~plt.clf()
 
     fig = plt.figure()
 
@@ -477,10 +477,10 @@ def convert_video(filename, output="ogv"):
     if output == "ogv":
         # Use Theora/Vorbis codecs
         command = ('ffmpeg2theora', '{0}'.format(filename))
-        #~command = ('ffmpeg', '-i', '{0}'.format( filename ), '-b', '1500k',
-                   #~'-vcodec', 'libtheora', '-acodec', 'libvorbis', '-ab',
-                   #~'160000', '-g', '30',
-                   #~'{0}'.format( '.'.join((out_file, output)) ))
+        # ~command = ('ffmpeg', '-i', '{0}'.format( filename ), '-b', '1500k',
+        #~'-vcodec', 'libtheora', '-acodec', 'libvorbis', '-ab',
+        #~'160000', '-g', '30',
+        # ~'{0}'.format( '.'.join((out_file, output)) ))
     elif output == "webm":
         # Use VP8/Vobis codecs
         command = ('ffmpeg', '-i', '{0}'.format(filename), '-b', '1500k',
