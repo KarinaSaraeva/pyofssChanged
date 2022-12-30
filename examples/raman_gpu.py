@@ -11,15 +11,15 @@ if __name__ == "__main__":
     import matplotlib as mpl
     mpl.rcParams['agg.path.chunksize'] = 10000
     import pylab as plt
-    plt.switch_backend('agg')
+    #plt.switch_backend('agg')
 
     import time
 
     domain = Domain(bit_width=200.0, samples_per_bit=2048*16)
     gaussian = Gaussian(peak_power=1.0, width=1.0)
 
-    fib = Fibre(length=5.0, method='rk4ip', total_steps=100,
-                beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0, self_steepening=True, use_all='hollenbeck')
+    fib = Fibre(length=5.0, method='rk4ip', total_steps=200,
+                beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0, self_steepening=False, use_all=True)
 
     sys = System(domain)
     sys.add(gaussian)
@@ -32,16 +32,15 @@ if __name__ == "__main__":
 
     print("Run time without cl is {}".format(stop-start))
 
-    single_plot(sys.domain.t, temporal_power(sys.field), labels["t"], labels["P_t"],
-                x_range=(-20.0, 40.0), use_fill=False)
-    plt.savefig('raman_without_cl')
+    #single_plot(sys.domain.t, temporal_power(sys.field), labels["t"], labels["P_t"],
+    #            x_range=(-20.0, 40.0), use_fill=False)
+    #plt.savefig('raman_without_cl')
 
     sys1 = System(domain)
     sys1.add(gaussian)
-    sys1.add(OpenclFibre(length=5.0, total_steps=100,
-                beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0,
-                use_all = True, domain = domain,
-                dorf = 'double'))
+    sys1.add(OpenclFibre(length=5.0, total_steps=200,
+                beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0, self_steepening=False, use_all=True,
+                dorf='double'))
     start = time.time()
     sys1.run()
     stop = time.time()
@@ -49,9 +48,9 @@ if __name__ == "__main__":
 
     print("Run time with cl is {}".format(stop-start))
 
-    single_plot(sys1.domain.t, temporal_power(sys1.field), labels["t"], labels["P_t"],
+    multi_plot(sys1.domain.t, [temporal_power(sys.field), temporal_power(sys1.field)], ["cpu", "gpu"], labels["t"], labels["P_t"],
                 x_range=(-20.0, 40.0), use_fill=False)
-    plt.savefig('raman_with_cl')
+    plt.savefig('raman_cl_compare')
 
     NO_CL_POWER = temporal_power(NO_CL_OUT)
     CL_POWER = temporal_power(CL_OUT)
