@@ -1,6 +1,7 @@
 
 """
-    Copyright (C) 2011, 2012  David Bolt
+    Copyright (C) 2011, 2012  David Bolt, 
+    2019-2021 Vladislav Efremov, Denis Kharenko
 
     This file is part of pyofss.
 
@@ -51,7 +52,7 @@ from .modules.static_pump_wdm import StaticPumpWDM
 try:
     from .modules.opencl_fibre import OpenclFibre
 except ImportError:
-    pass
+    print("OpenclFibre is not activated, check if pyopencl and reikna modules are installed")
 
 # Import helper functions
 from .domain import nu_to_omega, nu_to_lambda
@@ -81,6 +82,7 @@ from .modules.linearity import convert_alpha_to_dB
 # Import helper functions for nonlinear parameter and raman term
 from .modules.nonlinearity import calculate_gamma
 from .modules.nonlinearity import calculate_raman_term
+from .modules.nonlinearity import calculate_raman_term_silica
 
 # Import function for work with files
 from .system import field_save
