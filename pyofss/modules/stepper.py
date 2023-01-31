@@ -105,10 +105,11 @@ class Stepper(object):
 
         # Use a list of tuples ( z, A(z) ) for dense output if required:
         file_import_arguments["length"] = self.length
-        self.storage = Storage(dir, cycle=self.cycle, fibre_name=self.fibre_name, **file_import_arguments)
+        self.storage = Storage(
+            dir, cycle=self.cycle, fibre_name=self.fibre_name, **file_import_arguments)
 
         # Store constants for adaptive method:
-        self.total_attempts = 100
+        self.total_attempts = 1000
         self.steps_max = 100000
         self.step_size_min = 1e-37  # some small value
 
@@ -143,13 +144,15 @@ class Stepper(object):
         h = self.length / self.total_steps
         if h > refrence_length * (10 ** (-2)):
             warnings.warn(
-                f"h must be much less than dispersion length (L_D) and the nonlinear length (L_NL)\n        \
+                f"{self.cycle}: {self.fibre_name}: h must be much less than dispersion length (L_D) and the nonlinear length (L_NL)\n        \
                 now now the minimum of the characteristic distances is equal to {refrence_length:.6f}*km* \n         \
                 step is equal to {h}*km*"
             )
 
         # Construct mesh points for z:
         zs = np.linspace(0.0, self.length, self.total_steps + 1)
+
+        storage_step = int(self.total_steps / self.traces)
 
         # Construct mesh points for traces:
         if self.traces != self.total_steps:
@@ -173,14 +176,18 @@ class Stepper(object):
             # If multiple traces required, store A_out at each relavant z
             # value:
             if self.traces != 1:
-                self.storage.append(z + h, self.A_out)
+                # MODIFIED: If multiple traces required, store A_out at z only IF needed
+                if (i % storage_step == 0):
+                    self.storage.append(z + h, self.A_out)
 
         # Store total number of fft and ifft operations that were used:
         self.storage.store_current_fft_count()
 
         # Need to interpolate dense output to grid points set by traces:
-        if self.traces > 1 and (self.traces != self.total_steps):
-            self.storage.interpolate_As_for_z_values(trace_zs)
+        
+        # MODIFIED: no longer needed
+        # if self.traces > 1 and (self.traces != self.total_steps):
+        #     self.storage.interpolate_As_for_z_values(trace_zs)
 
         if (self.storage.dir_spec and self.storage.dir_temp):
             if (self.save_represent == "both"):
@@ -217,18 +224,26 @@ class Stepper(object):
     def adaptive_stepper(self, A, refrence_length):
         """ Take multiple steps, with variable length, until target reached """
 
-        # ~print( "Starting ODE integration with adaptive step-size... " ),
+        print("Starting ODE integration with adaptive step-size... ")
 
         # Initialise:
         self.A_out = A
         z = 0.0
-
         # Require an initial step-size which will be adapted by the routine:
         if self.traces > self.total_steps:
             h = self.length / self.traces
         else:
             h = self.length / self.total_steps
 
+        # if (h > 0.01*refrence_length):
+        #     h = 0.01*refrence_length
+        if (h > 1e-6):
+            h = 1e-6
+
+        print(f"initial step size equals {h}")
+        total_amount_of_steps = 0
+        step_storage = self.length / self.traces
+        z_ignore = step_storage
         # Constants used for approximation of solution using local
         # extrapolation:
         f_eta = np.power(2, self.eta - 1.0)
@@ -288,7 +303,7 @@ class Stepper(object):
                     # increase:
                     h = h_temp * self.max_factor
 
-                if delta < 2.0 * self.local_error:
+                if (delta < 2.0 * self.local_error):
                     # Successful step, so increment z h_temp (which is the
                     # stepsize that was used for this step):
                     z += h_temp
@@ -303,27 +318,17 @@ class Stepper(object):
 
                     # Store data on current z and stepsize used for each
                     # succesful step:
-                    self.storage.step_sizes.append((z, h_temp))
-
-                    # Most dense storage (stores a trace for each successful
-                    # step):
-                    if self.traces != 1:
+                    if (z > z_ignore):
+                        self.storage.step_sizes.append((z, h_temp))
                         self.storage.append(z, self.A_out)
-
+                        z_ignore += step_storage
                     break  # Successful attempt at step, move on to next step.
-
                 # Otherwise error was too large, continue with next attempt,
                 # but check the minimal step size first
                 else:
                     if h < self.step_size_min:
                         raise SmallStepSizeError(
                             "Step size is extremely small"
-                        )
-                    if h > refrence_length * (10 ** (-2)):
-                        raise SmallStepSizeError(
-                            f"h must be much less than dispersion length (L_D) and the nonlinear length (L_NL)\n        \
-                            now now the minimum of the characteristic distances is equal to {refrence_length:.6f}*km* \n         \
-                            step is equal to {h}*km*"
                         )
 
             else:
@@ -336,11 +341,25 @@ class Stepper(object):
                 # Store total number of fft and ifft operations that were used:
                 self.storage.store_current_fft_count()
 
+                # MODIFIED: no longer needed   
                 # Interpolate dense output to uniformly-spaced z values:
-                if self.traces > 1:
-                    self.storage.interpolate_As_for_z_values(zs)
-
+                # if self.traces > 1:
+                #     self.storage.interpolate_As_for_z_values(zs)
+                if (self.storage.dir_spec and self.storage.dir_temp):
+                    if (self.save_represent == "both"):
+                        self.storage.save_all_storage_to_dir_as_df(
+                            is_temporal=True)
+                        self.storage.save_all_storage_to_dir_as_df(
+                            is_temporal=False)
+                    elif (self.save_represent == "spectral"):
+                        self.storage.save_all_storage_to_dir_as_df(
+                            is_temporal=False)
+                    elif (self.save_represent == "temporal"):
+                        self.storage.save_all_storage_to_dir_as_df(
+                            is_temporal=True)
                 return self.A_out
+
+            total_amount_of_steps = total_amount_of_steps + 1
 
         raise MaximumStepsAllocatedError(
             "Failed to complete with maximum steps allocated"

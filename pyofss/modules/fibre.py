@@ -74,7 +74,7 @@ class Fibre(object):
                  self_steepening=False, raman_scattering=False,
                  rs_factor=0.003, use_all=False, centre_omega=None,
                  tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18, small_signal_gain=None,
-                 E_sat=None, dir=None, save_represent = "temporal", cycle = None):
+                 E_sat=None, lamb0=None, bandwidth=None, dir=None, save_represent="temporal", cycle=None):
 
         use_cache = not(method.upper().startswith('A'))
 
@@ -90,7 +90,7 @@ class Fibre(object):
 
         if (small_signal_gain is not None) and (E_sat is not None):
             self.amplifier = Amplifier(
-                self, gain=self.small_signal_gain, E_sat=E_sat, length=self.length, steps=total_steps)
+                self, gain=self.small_signal_gain, E_sat=E_sat, length=self.length, lamb0=lamb0, bandwidth=bandwidth, steps=total_steps)
         elif (small_signal_gain is None) and (E_sat is None):
             self.amplifier = None
         else:
@@ -132,7 +132,7 @@ class Fibre(object):
         file_import_arguments = {'alpha': check_if_None(alpha), 'beta2': get_beta_by_i(2), 'beta3': get_beta_by_i(3),
                                  'gamma': gamma, 'small_signal_gain': check_if_None(small_signal_gain), 'E_sat': check_if_None(E_sat)}
         self.stepper = Stepper(traces, local_error, method, self.function,
-                               self.length, total_steps, dir, save_represent, name = self.name, cycle = self.cycle, fibre_name=self.name,
+                               self.length, total_steps, dir, save_represent, name=self.name, cycle=self.cycle, fibre_name=self.name,
                                **file_import_arguments)
 
     def __call__(self, domain, field):
@@ -174,6 +174,8 @@ class Fibre(object):
             self.L_D = T_0**2 / (10**3 * self.beta_2)
         if (self.gamma is not None):
             self.L_NL = 1 / (self.gamma * P_0)
+            if (self.small_signal_gain is not None):
+                self.L_NL / (pow(10, 0.1 * self.small_signal_gain))
         if (self.L_NL and self.L_D is not None):
             self.refrence_length = min(self.L_NL, self.L_D)
         elif (self.L_NL or self.L_D is None):

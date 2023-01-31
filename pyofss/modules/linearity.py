@@ -26,6 +26,7 @@ except ImportError:  # try the old one for compatibility reson
     from scipy.misc import factorial
 from scipy import log10, exp
 import numpy as np
+import pandas as pd
 
 from pyofss.field import fft, ifft, fftshift
 
@@ -233,14 +234,21 @@ class Linearity(object):
         hf = self.factor * h
         if self.phase_lim:
             hf = self._limit_imag_part(hf)
-        amp_factor = self.amplifier.factor(A, h) if self.amplifier is not None else 0
-        return ifft(np.exp(amp_factor + hf) * fft(A))
-
+        amp_factor = self.amplifier.factor(A, h) if self.amplifier is not None else np.zeros(len(A))
+        if self.amplifier is None:
+            return ifft(np.exp(hf) * fft(A))
+        else:
+            return ifft(np.multiply(np.exp(amp_factor), np.exp(hf) * fft(A)))
+    
     def default_exp_f_cached(self, A, h):
         if self.cached_factor is None:
             self.cache(h)
-        amp_factor = self.amplifier.factor(A, h) if self.amplifier is not None else 0
-        return ifft((np.exp(amp_factor) * (self.cached_factor)) * fft(A))
+        amp_factor = self.amplifier.factor(A, h) if self.amplifier is not None else np.zeros(len(A))
+        if self.amplifier is None:
+            return ifft(self.cached_factor * fft(A))
+        else:
+            print(f"max value in factorArray: {np.amax(np.exp(amp_factor))}")          
+            return ifft(np.multiply(np.exp(amp_factor), self.cached_factor * fft(A)))
 
     def wdm_f(self, As, z):
         return np.asarray([ifft(self.factor[0] * fft(As[0])),

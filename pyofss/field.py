@@ -217,8 +217,9 @@ def max_peak_params(P, prominence):
     param double pulse_fwhm: FWHM *Unit: input arr indexes*, 
     param double left_ind, right_ind: interpolated positions of left and right intersection points of a FWHM line *Unit: input arr indexes*,
     """
-    peaks, _ = find_peaks(P, height=0, prominence=prominence)
-    results_fwhm = peak_widths(P, peaks, rel_height=0.5)
+    peaks, properties = find_peaks(P, height=0)
+    max_peak_ind = np.argmax(properties['peak_heights'])
+    results_fwhm = peak_widths(P, [peaks[max_peak_ind]], rel_height=0.5)
 
     ind_max = np.argmax(results_fwhm[1])
 

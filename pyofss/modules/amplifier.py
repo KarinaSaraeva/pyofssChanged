@@ -19,10 +19,11 @@
 """
 
 from scipy import power, sqrt
-from pyofss.field import fft, ifft
+from pyofss.field import fft, ifft, fftshift
 from pyofss.field import energy
 import numpy as np
-
+from pyofss.domain import Domain, lambda_to_omega, lambda_to_nu
+import pandas as pd
 
 class Amplifier(object):
     """
@@ -36,10 +37,12 @@ class Amplifier(object):
     """
 
     def __init__(self, name="amplifier", gain=None,
-                 E_sat=None, P_sat=None, rep_rate=None, length=1.0, steps=1):
+                 E_sat=None, P_sat=None, rep_rate=None, length=1.0, lamb0 = None, bandwidth=None, steps=1):
 
         self.total_steps = steps
         self.length = length
+        print(f"amplifier length equals {self.length}")
+        self.spectalFiltrationArray = None
 
         if gain is None:
             raise Exception("The gain is not defined.")
@@ -47,6 +50,15 @@ class Amplifier(object):
         if (P_sat is not None) and (E_sat is not None):
             raise Exception(
                 "There should be only one parameter of saturation.")
+
+        if (bandwidth is not None and lamb0 is not None):
+            self.delta = (Domain.vacuum_light_speed * bandwidth) / (lamb0 * lamb0)
+            self.lamb = lamb0
+            print(f"YDF lanmbda = {self.lamb} nm")
+            print(f"YDF bandwidth = {bandwidth} nm")
+        else: 
+            self.delta = None
+            self.lamb = None
 
         self.name = name
         self.gain = gain
@@ -83,14 +95,31 @@ class Amplifier(object):
         # convert field back to temporal domain:
         return ifft(self.field)
 
+    def findSpectalFiltrationArray(self):
+        if self.delta is not None and self.lamb is not None:
+            factorArray = 1/(1 + 4*(((self.domain.nu -lambda_to_nu(self.lamb))**2)/((self.delta)**2)))
+            DF = pd.DataFrame(fftshift(factorArray))
+            DF.to_csv("LorentzFactorArray.csv")
+            print(f"max value in factorArray: {np.amax(factorArray)}, at {self.domain.Lambda[np.argmax(factorArray)]} nm")
+            return fftshift(factorArray)
+        else:
+            return np.ones(len(self.domain.Lambda))
+
     def factor(self, A, h):
         M = np.log(power(10, 0.1 * self.gain))
         G = (M*h) / (2*self.length)
         if self.E_sat is not None:
             E = energy(A, self.domain.t)
             G = G/(1.0 + E/self.E_sat)
-        factor = G
+        else:
+            print("saturation is not stated!!!")
+        if (self.spectalFiltrationArray is not None):
+            factor = G * self.spectalFiltrationArray
+        else:
+            factor = G * self.findSpectalFiltrationArray()
+            print(f"max value in gainArray: {np.amax(factor)}, at {self.domain.Lambda(np.argmax(factor))} nm")
         return factor
 
     def setDomain(self, domain):
         self.domain = domain
+        self.spectalFiltrationArray = self.findSpectalFiltrationArray()

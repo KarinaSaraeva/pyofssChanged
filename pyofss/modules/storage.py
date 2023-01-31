@@ -192,8 +192,7 @@ class Storage(object):
                 dir = self.dir_spec
 
             (x, y, z) = self.get_plot_data(is_temporal=is_temporal)
-            iterables = [z*10**6]
-            index = pd.MultiIndex.from_product(iterables, names=["z [mm]"])
+            index = pd.MultiIndex.from_product([z], names=["z [mm]"])
             df1 = pd.DataFrame(y, index=index)
             file_name = os.path.join(dir, f"{self.fibre_name}.csv")
             with open(file_name, "w") as f:
