@@ -152,7 +152,7 @@ class Linearity(object):
     def default_linearity(self, domain):
         # Calculate dispersive terms:
         if self.amplifier is not None:
-            self.amplifier.setDomain(domain)
+            self.amplifier.set_domain(domain)
         if self.beta is None:
             self.factor = 0.0
         else:
@@ -247,7 +247,7 @@ class Linearity(object):
         if self.amplifier is None:
             return ifft(self.cached_factor * fft(A))
         else:
-            print(f"max value in factorArray: {np.amax(np.exp(amp_factor))}")          
+            # print(f"max value in factorArray: {np.amax(np.exp(amp_factor))}")          
             return ifft(np.multiply(np.exp(amp_factor), self.cached_factor * fft(A)))
 
     def wdm_f(self, As, z):

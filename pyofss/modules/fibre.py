@@ -20,7 +20,7 @@
 from scipy import power
 from scipy.signal import find_peaks, peak_widths
 from numpy import log10, amax, abs
-from pyofss.modules.amplifier import Amplifier
+from pyofss.modules.amplifier import Amplifier, Amplifier2LevelModel
 from .linearity import Linearity
 from .nonlinearity import Nonlinearity
 from .stepper import Stepper
@@ -74,7 +74,7 @@ class Fibre(object):
                  self_steepening=False, raman_scattering=False,
                  rs_factor=0.003, use_all=False, centre_omega=None,
                  tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18, small_signal_gain=None,
-                 E_sat=None, lamb0=None, bandwidth=None, dir=None, save_represent="temporal", cycle=None):
+                 E_sat=None, lamb0=None, bandwidth=None, use_Yb=False, dir=None, save_represent="temporal", cycle=None):
 
         use_cache = not(method.upper().startswith('A'))
 
@@ -88,14 +88,17 @@ class Fibre(object):
         self.refrence_length = None
         self.cycle = cycle
 
-        if (small_signal_gain is not None) and (E_sat is not None):
-            self.amplifier = Amplifier(
-                self, gain=self.small_signal_gain, E_sat=E_sat, length=self.length, lamb0=lamb0, bandwidth=bandwidth, steps=total_steps)
-        elif (small_signal_gain is None) and (E_sat is None):
-            self.amplifier = None
-        else:
-            assert(FiberInitError(
-                'Not enought parameters to initialise amplification fiber: both small_signal_gain and E_sat must be passed!'))
+        if use_Yb:
+            self.amplifier = Amplifier2LevelModel()
+        else:    
+            if (small_signal_gain is not None) and (E_sat is not None):
+                self.amplifier = Amplifier(
+                    gain=self.small_signal_gain, E_sat=E_sat, length=self.length, lamb0=lamb0, bandwidth=bandwidth, steps=total_steps)
+            elif (small_signal_gain is None) and (E_sat is None):
+                self.amplifier = None
+            else:
+                assert(FiberInitError(
+                    'Not enought parameters to initialise amplification fiber: both small_signal_gain and E_sat must be passed!'))
 
         self.linearity = Linearity(alpha, beta, sim_type,
                                    use_cache, centre_omega, amplifier=self.amplifier)
