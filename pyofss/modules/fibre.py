@@ -73,8 +73,10 @@ class Fibre(object):
                  local_error=1.0e-6, method="RK4IP", total_steps=100,
                  self_steepening=False, raman_scattering=False,
                  rs_factor=0.003, use_all=False, centre_omega=None,
-                 tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18, small_signal_gain=None,
-                 E_sat=None, lamb0=None, bandwidth=None, use_Yb=False, dir=None, save_represent="temporal", cycle=None):
+                 tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18, 
+                 small_signal_gain=None, E_sat=None, lamb0=None, bandwidth=None, 
+                 use_Yb_model=False, Pp_0 = None, N = None,
+                 dir=None, save_represent="temporal", cycle=None):
 
         use_cache = not(method.upper().startswith('A'))
 
@@ -88,9 +90,9 @@ class Fibre(object):
         self.refrence_length = None
         self.cycle = cycle
 
-        if use_Yb:
-            self.amplifier = Amplifier2LevelModel()
-        else:    
+        if (use_Yb_model):
+            self.amplifier = Amplifier2LevelModel(Pp_0, N)
+        else:
             if (small_signal_gain is not None) and (E_sat is not None):
                 self.amplifier = Amplifier(
                     gain=self.small_signal_gain, E_sat=E_sat, length=self.length, lamb0=lamb0, bandwidth=bandwidth, steps=total_steps)

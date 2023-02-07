@@ -21,12 +21,22 @@
 from scipy import power, sqrt
 from pyofss.field import fft, ifft, fftshift, energy, spectral_power
 import numpy as np
+from abc import ABC, abstractmethod
 from pyofss.domain import Domain, lambda_to_omega, lambda_to_nu
 import pandas as pd
 import warnings
     
+class AmplifierBase(ABC):
+    @abstractmethod
+    def factor(self, A, h):
+        pass
 
-class Amplifier(object):
+    @abstractmethod
+    def set_domain(self, domain):
+        pass
+
+
+class Amplifier(AmplifierBase):
     """
     :param string name: Name of this module
     :param double gain: Amount of (logarithmic) gain. *Unit: dB*
@@ -37,7 +47,7 @@ class Amplifier(object):
     Simple amplifier provides gain but no noise
     """
 
-    def __init__(self, name="amplifier", gain=None,
+    def __init__(self, name="simple_saturation", gain=None,
                  E_sat=None, P_sat=None, rep_rate=None, length=1.0, lamb0 = None, bandwidth=None, steps=1):
         self.total_steps = steps
         self.length = length
@@ -71,28 +81,6 @@ class Amplifier(object):
         else:
             self.E_sat = None
         self.field = None
-
-    def __call__(self, field):
-        # Convert field to spectral domain:
-        self.field = fft(field)
-
-        # Calculate linear gain from logarithmic gain (G_dB -> G_linear)
-        M = power(10, 0.1 * self.gain)
-        G = M / self.total_steps
-        print(G)
-        if self.E_sat is not None:
-            E = energy(field, self.domain.t)
-            G = G/(1.0 + E/self.E_sat)
-        sqrt_G = sqrt(G)
-
-        if self.domain.channels > 1:
-            self.field[0] *= sqrt_G
-            self.field[1] *= sqrt_G
-        else:
-            self.field *= sqrt_G
-
-        # convert field back to temporal domain:
-        return ifft(self.field)
 
     @property
     def spectal_filtration_array(self):
@@ -129,10 +117,9 @@ class Amplifier(object):
         self.domain = domain
 
 
-class Amplifier2LevelModel(Amplifier):
-    def __init__(self, name="amplifier2LevelModel"):
+class Amplifier2LevelModel(AmplifierBase):
+    def __init__(self, name="amplifier2LevelModel", Pp=None, N=None):
         print(f"use two level Yb gain model")
-        super().__init__(name=name)
         #constatnts 
         self.h_p = 6.62*1e-34
         self.T = 850.0 * pow(0.1,6) # units? s
@@ -140,15 +127,20 @@ class Amplifier2LevelModel(Amplifier):
         self.b = 60.0 * pow(0.1,6)
         self.NA = 0.13
         self.lamb_p = 976.0
-        self.N = None
+        self.N = N * (10**25) * np.pi * self.a **2 # density per unit length
+        self._Pp = Pp
+
         self.domain = None
+
+        self.Pp_list = []
 
         self.sigma12_p = 2.5 * pow(0.1,24) # units? m2
         self.sigma21_p = 2.44* pow(0.1,24)
         self.load_sigma_s()
 
     def load_sigma_s(self):
-        df = pd.read_csv("../data/CrossSectionData.dat", delimiter="\t", header=None)
+        import os.path
+        df = pd.read_csv(os.path.dirname(__file__) + '/../data/CrossSectionData.dat', delimiter="\t", header=None)
         self.delta_nu = df[df.columns[0]]
         self.sigma12_s = df[df.columns[1]]
         self.sigma21_s = df[df.columns[2]]
@@ -222,6 +214,10 @@ class Amplifier2LevelModel(Amplifier):
         except:
             self._alpha_p = (self.sigma12_p + self.sigma21_p) * self.rho_p
             return self._alpha_p
+        
+    @property
+    def Pp(self):
+        return self._Pp
 
     def interpolate_sigma(self):
         from scipy import interpolate
@@ -234,8 +230,8 @@ class Amplifier2LevelModel(Amplifier):
         self.sigma12_s = spl12_s(self.delta_nu)
         self.sigma21_s = spl21_s(self.delta_nu)
 
-    def calculate_N2(self, Pp, Ps):
-        numerator = Pp / self.Psat_p + np.sum(Ps / self.Psat_s)
+    def calculate_N2(self, Ps):
+        numerator = self.Pp / self.Psat_p + np.sum(Ps / self.Psat_s)
         denominator = 1 + numerator
         N2 = (numerator/denominator) * self.N
         return N2
@@ -246,14 +242,19 @@ class Amplifier2LevelModel(Amplifier):
     def calculate_g_p(self, N2):
         return self.alpha_p * N2 - self.eta_p
     
-    def factor(self, A, P): 
+    def update_Pp(self, g_p, h):
+        self.Pp_list.append(self._Pp)
+        self._Pp = self._Pp * np.exp(g_p * h)
+    
+    def factor(self, A, h): 
         # g_s: array in frequency domain is calculated with respect to current N2 and N1: recalculated on yeach z step
         # g_p: value is calculated with respect to current N2 and N1: recalculated on yeach z step 
 
         if self.domain is None:
             raise Exception("Domain is not preset.")
 
-        N2 = self.calculate_N2(P, spectral_power(A))
+        N2 = self.calculate_N2(spectral_power(A))
         g_s = self.calculate_g_s(N2)
         g_p = self.calculate_g_p(N2)
-        return g_s, g_p
+        self.update_Pp(g_p, h)
+        return g_s

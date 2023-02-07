@@ -153,6 +153,7 @@ class Linearity(object):
         # Calculate dispersive terms:
         if self.amplifier is not None:
             self.amplifier.set_domain(domain)
+            
         if self.beta is None:
             self.factor = 0.0
         else:
@@ -234,19 +235,19 @@ class Linearity(object):
         hf = self.factor * h
         if self.phase_lim:
             hf = self._limit_imag_part(hf)
-        amp_factor = self.amplifier.factor(A, h) if self.amplifier is not None else np.zeros(len(A))
         if self.amplifier is None:
             return ifft(np.exp(hf) * fft(A))
         else:
+            amp_factor = self.amplifier.factor(A, h)
             return ifft(np.multiply(np.exp(amp_factor), np.exp(hf) * fft(A)))
     
     def default_exp_f_cached(self, A, h):
         if self.cached_factor is None:
             self.cache(h)
-        amp_factor = self.amplifier.factor(A, h) if self.amplifier is not None else np.zeros(len(A))
         if self.amplifier is None:
             return ifft(self.cached_factor * fft(A))
         else:
+            amp_factor = self.amplifier.factor(A, h)
             # print(f"max value in factorArray: {np.amax(np.exp(amp_factor))}")          
             return ifft(np.multiply(np.exp(amp_factor), self.cached_factor * fft(A)))
 
