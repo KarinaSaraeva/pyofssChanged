@@ -93,7 +93,7 @@ OPENCL_OPERATIONS = Template("""
         field[gid] = c${dorf}_mul(
             field[gid], c${dorf}_mul(im_gamma, cl_square_abs(field[gid])));
     }
-    
+
     __kernel void cl_nonlinear_exp(__global c${dorf}_t* fieldA,
                                const __global c${dorf}_t* fieldB,
                                const ${dorf} gamma,
@@ -169,6 +169,36 @@ OPENCL_OPERATIONS = Template("""
             im_gamma, field[gid]);
     }
 
+    __kernel void cl_split(__global c${dorf}_t* field,
+                        __global c${dorf}_t* subfield1, __global c${dorf}_t* subfield2,
+                        const int n)
+    {
+        int gid = get_global_id(0);
+        if (gid < n)
+        {
+            subfield1[gid] = field[gid];
+        }
+        else
+        {
+            subfield2[gid-n] = field[gid];
+        }
+    }
+
+    __kernel void cl_couple(__global c${dorf}_t* field,
+                        __global c${dorf}_t* subfield1, __global c${dorf}_t* subfield2,
+                        const int n)
+    {
+        int gid = get_global_id(0);
+        if (gid < n)
+        {
+            field[gid] = subfield1[gid];
+        }
+        else
+        {
+            field[gid] = subfield2[gid-n];
+        }
+    }
+
 """)
 
 
@@ -183,13 +213,15 @@ class OpenclFibre(object):
     """
     def __init__(self, name="ocl_fibre", length=1.0, alpha=None,
                  beta=None, gamma=0.0, method="cl_rk4ip", total_steps=100,
-                 self_steepening=False, use_all=False, centre_omega=None,
-                 tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18,
-                 dorf='double', ctx=None, fast_math=False):
+                 centre_omega=None, dorf='float', ctx=None, fast_math=False,
+                 use_all = False, self_steepening=False, f_R = 0.18,
+                 channels = 1):
 
         self.name = name
-        
+
         self.domain = None
+
+        self.channels = channels
 
         self.use_all = use_all
 
@@ -200,8 +232,8 @@ class OpenclFibre(object):
         self.h_R = None
         self.buf_h_R = None
         self.omega = None
-        self.ss_factor = None            
-        
+        self.ss_factor = None
+
         self.queue = None
         self.np_float = None
         self.np_complex = None
@@ -214,6 +246,8 @@ class OpenclFibre(object):
         self.plan = None
 
         self.buf_field = None
+        self.subfield1 = None
+        self.subfield2 = None
         self.buf_temp = None
         self.buf_interaction = None
         self.buf_factor = None
@@ -239,36 +273,36 @@ class OpenclFibre(object):
 
         self.method = getattr(self, method.lower())
 
-        if self.use_all:
+        if self.use_all == "hollenbeck":
             if self_steepening is False:
                 self.cl_n = getattr(self, 'cl_n_with_all')
             else:
                 self.cl_n = getattr(self, 'cl_n_with_all_and_ss')
-        elif self_steepening:
-            raise NotImplementedError("Self-steepening without general nonlinearity is not implemented")
         else:
             self.cl_n = getattr(self, 'cl_n_default')
-        
+
         self.linearity = Linearity(alpha, beta, sim_type="default",
                                     use_cache=True, centre_omega=centre_omega, phase_lim=True)
-        self.nonlinearity = Nonlinearity(gamma, None, self_steepening,
-                                         False, 0,
-                                         use_all, tau_1, tau_2, f_R)
+        self.nonlinearity = Nonlinearity(gamma, self_steepening=self_steepening,
+                                         use_all = use_all, f_R = f_R)
         self.factor = None
 
     def __call__(self, domain, field):
         # Setup plan for calculating fast Fourier transforms:
         if self.plan is None:
             if version_py == 3:
-                self.plan = FFT(domain.t.astype(self.np_complex)).compile(self.thr, 
+                self.plan = FFT(domain.t.astype(self.np_complex)).compile(self.thr,
                         fast_math=self.fast_math, compiler_options=self.compiler_options)
-                self.plan.execute = self.reikna_fft_execute
+                if self.channels == 2:
+                    self.plan.execute = self.reikna_fft_execute_ch2
+                else:
+                    self.plan.execute = self.reikna_fft_execute
             else:
                 self.plan = Plan(domain.total_samples, queue=self.queue, dtype=self.np_complex, fast_math=self.fast_math)
 
         if self.domain != domain:
             self.domain = domain
-            if self.use_all:
+            if self.use_all == "hollenbeck":
                 self.nonlinearity(self.domain)
                 self.omega = self.nonlinearity.omega
                 self.h_R = self.nonlinearity.h_R
@@ -277,9 +311,16 @@ class OpenclFibre(object):
                     self.nn_factor = 1.0 + self.omega * self.ss_factor
                 else:
                     self.nn_factor = None
+                if self.channels == 2:
+                    self.nn_factor = np.array([ self.nn_factor, self.nn_factor ])
+                    self.h_R = np.array([self.h_R, self.h_R])
 
         if self.factor is None:
-            self.factor = self.linearity(domain)
+            factor = self.linearity(domain)
+            if self.channels == 2:
+                self.factor = np.array([factor, factor])
+            else:
+                self.factor = factor
 
         self.send_arrays_to_device(field, self.factor)
 
@@ -303,7 +344,7 @@ class OpenclFibre(object):
                 self.compiler_options = "-cl-mad-enable -cl-fast-relaxed-math"
             else:
                 self.compiler_options = ""
-        
+
         if self.ctx is None:
             self.ctx = cl.create_some_context()
 
@@ -340,17 +381,24 @@ class OpenclFibre(object):
 
     def send_arrays_to_device(self, field, factor):
         """ Move numpy arrays onto compute device. """
-        self.shape = field.shape
+        if self.channels == 2:
+            self.shape = (field.shape[0]*field.shape[1], )
+        else:
+            self.shape = field.shape
 
         self.buf_field = cl_array.to_device(
             self.queue, field.astype(self.np_complex))
+
+        if self.channels == 2:
+            self.subfield1 = cl_array.empty(self.queue, (field.shape[1], ), self.np_complex)
+            self.subfield2 = cl_array.empty(self.queue, (field.shape[1], ), self.np_complex)
 
         if self.buf_temp is None:
             self.buf_temp = cl_array.empty_like(self.buf_field)
         if self.buf_interaction is None:
             self.buf_interaction = cl_array.empty_like(self.buf_field)
 
-        if self.use_all:
+        if self.use_all == "hollenbeck":
             if self.buf_h_R is None:
                 self.buf_h_R = cl_array.to_device(
                                         self.queue, self.h_R.astype(self.np_complex))
@@ -381,10 +429,13 @@ class OpenclFibre(object):
         """ Linear part of step (cached version). """
         if (self.cached_factor is False):
             self.linearity.cache(stepsize)
-            self.buf_factor = cl_array.to_device(
-                self.queue, self.linearity.cached_factor.astype(self.np_complex))
+            if self.channels == 2:
+                self.buf_factor = cl_array.to_device(
+                    self.queue, np.array([self.linearity.cached_factor.astype(self.np_complex), self.linearity.cached_factor.astype(self.np_complex)]))
+            else:
+                self.buf_factor = cl_array.to_device(
+                    self.queue, self.linearity.cached_factor.astype(self.np_complex))
             self.cached_factor = True
-
         self.plan.execute(field_buffer.data, inverse=True)
         self.prg.cl_linear_cached(self.queue, self.shape, None,
                                   field_buffer.data, self.buf_factor.data)
@@ -394,14 +445,14 @@ class OpenclFibre(object):
         """ Nonlinear part of step. """
         self.prg.cl_nonlinear(self.queue, self.shape, None, field_buffer.data,
                               self.np_float(self.gamma), self.np_float(stepsize))
-    
+
     def cl_nonlinear(self, fieldA_buffer, stepsize, fieldB_buffer):
         """ Nonlinear part of step, exponential term"""
         self.prg.cl_nonlinear_exp(self.queue, self.shape, None, fieldA_buffer.data, fieldB_buffer.data,
                               self.np_float(self.gamma), self.np_float(stepsize))
 
     def cl_n_with_all_and_ss(self, field_buffer, stepsize):
-        """ Nonlinear part of step with self_steepening and raman """
+        """ Nonlinear part of step with self_steeppening and raman """
         # |A|^2
         self.cl_copy(self.buf_mod, field_buffer)
         self.prg.cl_square_abs2(self.queue, self.shape, None,
@@ -429,7 +480,7 @@ class OpenclFibre(object):
                              field_buffer.data, self.np_float(stepsize))
 
     def cl_n_with_all(self, field_buffer, stepsize):
-        """ Nonlinear part of step with self_steepening and raman """
+        """ Nonlinear part of step with self_steeppening and raman """
         # |A|^2
         self.cl_copy(self.buf_mod, field_buffer)
         self.prg.cl_square_abs2(self.queue, self.shape, None,
@@ -463,20 +514,29 @@ class OpenclFibre(object):
                         second_buffer.data, self.np_float(second_factor))
 
     def reikna_fft_execute(self, d, inverse=False):
-        self.plan(d,d,inverse=inverse)
-    
+        self.plan(d, d, inverse=inverse)
+
+    def reikna_fft_execute_ch2(self, d, inverse=False):
+        self.prg.cl_split(self.queue, self.shape, None,
+                       d, self.subfield1.data, self.subfield2.data,
+                       np.int32(self.shape[0]/2))
+        self.plan(self.subfield1.data, self.subfield1.data, inverse=inverse)
+        self.plan(self.subfield2.data, self.subfield2.data, inverse=inverse)
+        self.prg.cl_couple(self.queue, self.shape, None,
+                       d, self.subfield1.data, self.subfield2.data,
+                       np.int32(self.shape[0]/2))
+
     def cl_ss_symmetric(self, field, field_temp, field_interaction, factor, stepsize):
         """ Symmetric split-step method using OpenCL"""
         half_step = 0.5 * stepsize
-        
         self.cl_copy(field_temp, field)
 
         self.cl_linear(field_temp, half_step, factor)
         self.cl_nonlinear(field, stepsize, field_temp)
         self.cl_linear(field, half_step, factor)
-    
+
     def cl_ss_sym_rk4(self, field, field_temp, field_linear, factor, stepsize):
-        """ 
+        """
         Runge-Kutta fourth-order method using OpenCL.
 
             A_L = f.linear(A, hh)
@@ -502,17 +562,17 @@ class OpenclFibre(object):
         self.cl_sum(field_temp, 0.5, field_linear, 1)
         self.cl_n(field_temp, stepsize) #k1
         self.cl_sum(field, 1, field_temp, inv_three) #free k1
-        
+
         self.cl_sum(field_temp, 0.5, field_linear, 1)
         self.cl_n(field_temp, stepsize) #k2
         self.cl_sum(field, 1, field_temp, inv_three) #free k2
-        
+
         self.cl_sum(field_temp, 1, field_linear, 1)
         self.cl_n(field_temp, stepsize) #k3
         self.cl_sum(field, 1, field_temp, inv_six) #free k3
-        
+
         self.cl_linear(field, half_step, factor)
-        
+
     def cl_rk4ip(self, field, field_temp, field_interaction, factor, stepsize):
         """ Runge-Kutta in the interaction picture method using OpenCL. """
         '''
