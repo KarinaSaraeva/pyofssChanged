@@ -166,7 +166,7 @@ def energy(A_t, t):
     Energy calculation
     """
     E = integrate.simps(temporal_power(A_t), t*1e-3)  # nJ
-
+    
     return E
 
 
@@ -244,10 +244,12 @@ def spectrum_width_params(P, prominence=0.0001):
     def find_x(y_peak, x_peak, is_left, ydata):
         if (is_left):
             x = np.where(ydata < y_peak)[0]
-            boundary = np.amax(x[np.where(x < x_peak)])
+            filtered_x = x[np.where(x < x_peak)]
+            boundary = np.amax(filtered_x) if len(filtered_x) > 0  else 0 
         else:
             x = np.where(ydata < y_peak)[0]
-            boundary = np.amin(x[np.where(x > x_peak)])
+            filtered_x = x[np.where(x > x_peak)]
+            boundary = np.amin(filtered_x) if len(filtered_x) > 0  else 0 
         return int(boundary)
 
     peaks, _ = find_peaks(P, height=0, prominence=prominence)
@@ -259,10 +261,15 @@ def spectrum_width_params(P, prominence=0.0001):
         left_ind = find_x(heigth_fwhm, peaks[0], True, P)
         right_ind = find_x(heigth_fwhm, peaks[-1], False, P)
         fwhm = right_ind - left_ind
+    elif (len(peaks) == 0):
+        heigth_fwhm = None
+        left_ind = None
+        right_ind = None
+        fwhm = None
     else:
         results_fwhm = peak_widths(P, peaks, rel_height=0.5)
         heigth_fwhm = np.amax(results_fwhm[1])
-        fwhm = results_fwhm[0]
+        fwhm = results_fwhm[0][0]
         left_ind = results_fwhm[2][0]
         right_ind = results_fwhm[3][0]
 

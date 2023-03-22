@@ -145,7 +145,7 @@ class Stepper(object):
         if h > refrence_length * (10 ** (-2)):
             warnings.warn(
                 f"{self.cycle}: {self.fibre_name}: h must be much less than dispersion length (L_D) and the nonlinear length (L_NL)\n        \
-                now now the minimum of the characteristic distances is equal to {refrence_length:.6f}*km* \n         \
+                now the minimum of the characteristic distances is equal to {refrence_length:.6f}*km* \n         \
                 step is equal to {h}*km*"
             )
 
@@ -201,6 +201,11 @@ class Stepper(object):
             elif (self.save_represent == "temporal"):
                 self.storage.save_all_storage_to_dir_as_df(
                     is_temporal=True)
+            elif (self.save_represent == "complex"):
+                self.storage.save_all_storage_to_dir_as_df(
+                    is_temporal=True, save_power=False)
+            else:
+               print(f"flag should be one of these: spectral, spectral, both, complex") 
 
         return self.A_out
 
@@ -250,6 +255,7 @@ class Stepper(object):
         f_alpha = f_eta / (f_eta - 1.0)
         f_beta = 1.0 / (f_eta - 1.0)
 
+        hmin = h
         # Calculate z-values at which to save traces.
         if self.traces > 1:
             # zs contains z-values for each trace, as well as the initial
@@ -288,7 +294,8 @@ class Stepper(object):
 
                 # Store current stepsize:
                 h_temp = h
-
+                if hmin > h:
+                    hmin = h
                 # Adjust stepsize for next step:
                 if delta > 0.0:
                     error_ratio = self.local_error / delta
@@ -357,6 +364,11 @@ class Stepper(object):
                     elif (self.save_represent == "temporal"):
                         self.storage.save_all_storage_to_dir_as_df(
                             is_temporal=True)
+                    elif (self.save_represent == "complex"):
+                        self.storage.save_all_storage_to_dir_as_df(
+                            is_temporal=True, save_power=False)
+                    else:
+                        print(f"flag should be one of these: spectral, spectral, both, complex") 
                 return self.A_out
 
             total_amount_of_steps = total_amount_of_steps + 1

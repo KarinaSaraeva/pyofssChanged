@@ -24,6 +24,7 @@ from pyofss.modules.amplifier import Amplifier, Amplifier2LevelModel
 from .linearity import Linearity
 from .nonlinearity import Nonlinearity
 from .stepper import Stepper
+from pyofss.domain import Domain
 
 
 class FiberInitError(Exception):
@@ -75,7 +76,7 @@ class Fibre(object):
                  rs_factor=0.003, use_all=False, centre_omega=None,
                  tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18, 
                  small_signal_gain=None, E_sat=None, lamb0=None, bandwidth=None, 
-                 use_Yb_model=False, Pp_0 = None, N = None,
+                 use_Yb_model=False, Pp_0 = None, N = None, Rr=None,
                  dir=None, save_represent="temporal", cycle=None):
 
         use_cache = not(method.upper().startswith('A'))
@@ -91,7 +92,7 @@ class Fibre(object):
         self.cycle = cycle
 
         if (use_Yb_model):
-            self.amplifier = Amplifier2LevelModel(Pp_0, N)
+            self.amplifier = Amplifier2LevelModel(Pp=Pp_0, N=N, Rr=Rr)
         else:
             if (small_signal_gain is not None) and (E_sat is not None):
                 self.amplifier = Amplifier(

@@ -8,7 +8,7 @@ from itertools import cycle
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from pyofss import Domain, System, Gaussian, Fibre, Filter, Splitter, FibrePlotter
+from pyofss import Domain, System, Gaussian, Fibre, Filter, Splitter, FibrePlotter, Noise
 from pyofss import temporal_power, spectral_power, lambda_to_nu, nu_to_lambda
 from pyofss import single_plot, map_plot, waterfall_plot, labels
 from pyofss.field import energy, max_peak_params, spectrum_width_params
@@ -214,15 +214,23 @@ L6 = float(sys.argv[10])
 SSG = float(sys.argv[11])
 G1 = float(sys.argv[12])
 G2 = float(sys.argv[13])
-N = int(sys.argv[14])  # use from sh script
-local_error = float(sys.argv[15])
-step_size = float(sys.argv[16])
-ResultDirName = sys.argv[17]
+print(f"{G2}")
+N = float(sys.argv[14])
+print(f"{N}")
+N_cycles = int(sys.argv[15])  # use from sh script
+print(f"{N_cycles}")
+Pp_0 = float(sys.argv[16])
+print(f"{Pp_0}")
+local_error = float(sys.argv[17])
+step_size = float(sys.argv[18])
+ResultDirName = sys.argv[19]
 ResultDir = os.path.join(
-    sys.argv[18], ResultDirName)
-useRaman = bool(float(sys.argv[19]))
-useAdaptive = bool(float(sys.argv[20]))
-
+    sys.argv[20], ResultDirName)
+useRaman = bool(float(sys.argv[21]))
+useAdaptive = bool(float(sys.argv[22]))
+use_Yb_model = bool(float(sys.argv[23]))
+use_noise = bool(float(sys.argv[24]))
+noise_scale = float(sys.argv[25])
 # F1 = lambda_to_nu(1040) - lambda_to_nu(1035)
 # F2 = (lambda_to_nu(1030) - lambda_to_nu(1035))
 # FW1 = (Domain.vacuum_light_speed/(1040**2))*4
@@ -246,10 +254,11 @@ Lp_1 = 0.8*1e-3                                 # 0.8m
 Lp_2 = L3*1e-3                                 # 0.8m
 Lp_3 = 0.8*1e-3                                 # 0.8m
 Lp_4 = L6*1e-3                                 # 0.8m
-# step_size = 5*1e-8
+Lr = La_1 + La_2 + Lp_1 + Lp_2 + Lp_3 + Lp_4
+Tr = Lr * 1e12 / Domain.vacuum_light_speed #ps
 
 small_signal_gain = SSG
-N_cycles = int(N)
+N_cycles = int(N_cycles)
 gamma_passive = G1
 gamma_active = G2
 # peak_power = 50.
@@ -282,7 +291,21 @@ else:
     useAdaptiveName = "ss"
     print(f"DO NOT use adaptive stepper")
 
-folder_name = f"{useRamanName}_{useAdaptiveName}_{F1:.2f}_F2_{F2:.2f}_FW1_{FW1:.2f}_FW2_{FW2:.2f}_C1_{C1:.2f}_C2_{C2:.2f}_E1_{E1:.2f}_E2_{E2:.2f}_L3_{L3:.2f}_L6_{L6:.2f}_SSG_{SSG:.2f}_G1_{G1:.2f}_G2_{G2:.2f}_N_{N}_LE_{local_error}_SS_{step_size}"
+if use_Yb_model:
+    useYbModelName = "ybm"
+    print(f"use Yb amplification model")
+else: 
+    useYbModelName = "sm"
+    print(f"use simple amplification model")
+
+if use_noise:
+    useNoiseName = "ns"
+    print(f"use noise at the end of each amplification fibre")
+else: 
+    useNoiseName = "no_ns"
+    print(f"no noise in model")
+
+folder_name = f"{useRamanName}_{useYbModelName}_{useNoiseName}_{useAdaptiveName}_{F1:.2f}_F2_{F2:.2f}_FW1_{FW1:.2f}_FW2_{FW2:.2f}_C1_{C1:.2f}_C2_{C2:.2f}_E1_{E1:.2f}_E2_{E2:.2f}_L3_{L3:.2f}_L6_{L6:.2f}_SSG_{SSG:.2f}_N_{N:.2f}_Pp_{Pp_0:.2f}_G1_{G1:.2f}_G2_{G2:.2f}_Nc_{N_cycles}_LE_{local_error}_SS_{step_size}_NS_{noise_scale}"
 
 RootDir = os.path.join(
     ResultDir, folder_name)
@@ -313,36 +336,40 @@ plt.savefig(os.path.join(
 plt.show()
 
 GraphDir = os.path.join(Dir, "mamyshev_oscillator")
-sys = System(domain, A)
+sys = System(domain, A, charact_dir=os.path.join(Dir, f'cycle_current'))
 
 for i in range(N_cycles):
-    cycleDir = os.path.join(Dir, f'cycle{int(i)}')
+    # cycleDir = os.path.join(Dir, f'cycle{int(i)}')
+    cycleDir = os.path.join(Dir, f'cycle_current')
     sys.add(Filter(name="filter_1", width_nu=(FW1), offset_nu=(F1),
-                   m=1, channel=0, using_fwhm=True, type_filt="reflected"))
+                m=1, channel=0, using_fwhm=True, type_filt="reflected"))
     sys.add(Fibre(name="1_passive_fibre", length=Lp_1, gamma=gamma_passive, beta=np.array(
-        [0, 0, 22.2]), total_steps=int(Lp_1/step_size), traces=100, local_error=local_error, use_all=use_all, method=method, cycle=f'cycle{int(i)}', dir=cycleDir, save_represent="both"))
+        [0, 0, 22.2]), total_steps=int(Lp_1/step_size), traces=100, local_error=local_error, use_all=use_all, method=method, cycle=f'cycle{int(i)}', save_represent="complex"))
     sys.add(Fibre(name="2_active_fibre", length=La_1, gamma=gamma_active, beta=np.array(
-        [0, 0, 24.9]), total_steps=int(La_1/step_size), traces=100, local_error=local_error, use_all=use_all, method=method, cycle=f'cycle{int(i)}', small_signal_gain=small_signal_gain, E_sat=Esat_1, lamb0=1035., bandwidth=40., dir=cycleDir, save_represent="both"))
+        [0, 0, 24.9]), total_steps=int(La_1/step_size), traces=100, local_error=local_error, use_all=use_all, method=method, cycle=f'cycle{int(i)}', small_signal_gain=small_signal_gain, E_sat=Esat_1, lamb0=1035., bandwidth=40., use_Yb_model=use_Yb_model, Pp_0=Pp_0, Rr=1/Tr, N=N, save_represent="complex"))
+    if use_noise:
+        sys.add(Noise(name="gaussian_noise", disp_factor=noise_scale))
     sys.add(Fibre(name="3_passive_fibre", length=Lp_2, gamma=gamma_passive, beta=np.array(
-        [0, 0, 22.2]), total_steps=int(Lp_2/step_size), traces=100, local_error=local_error, use_all=use_all, method=method, cycle=f'cycle{int(i)}', dir=cycleDir, save_represent="both"))
+        [0, 0, 22.2]), total_steps=int(Lp_2/step_size), traces=100, local_error=local_error, use_all=use_all, method=method, cycle=f'cycle{int(i)}', save_represent="complex"))
     sys.add(Splitter(name="splitter", loss=C1))
     sys.add(Filter(name="filter_2", width_nu=(FW2), offset_nu=(F2),
-                   m=1, channel=0, using_fwhm=True, type_filt="reflected"))
+                m=1, channel=0, using_fwhm=True, type_filt="reflected"))
     sys.add(Fibre(name="4_passive_fibre", length=Lp_3, gamma=gamma_passive, beta=np.array(
-        [0, 0, 22.2]),  total_steps=int(Lp_3/step_size), traces=100, local_error=local_error, use_all=use_all, method=method, cycle=f'cycle{int(i)}', dir=cycleDir, save_represent="both"))
+        [0, 0, 22.2]),  total_steps=int(Lp_3/step_size), traces=100, local_error=local_error, use_all=use_all, method=method, cycle=f'cycle{int(i)}', save_represent="complex"))
     sys.add(Fibre(name="5_active_fibre", length=La_2, gamma=gamma_active, beta=np.array(
-        [0, 0, 24.9]), total_steps=int(La_2/step_size), traces=100, local_error=local_error, use_all=use_all, method=method, cycle=f'cycle{int(i)}', small_signal_gain=small_signal_gain, E_sat=Esat_2, lamb0=1035., bandwidth=40., dir=cycleDir, save_represent="both"))
+        [0, 0, 24.9]), total_steps=int(La_2/step_size), traces=100, local_error=local_error, use_all=use_all, method=method, cycle=f'cycle{int(i)}', small_signal_gain=small_signal_gain, E_sat=Esat_2, lamb0=1035., bandwidth=40., use_Yb_model=use_Yb_model, Pp_0=Pp_0, Rr=1/Tr, N=N, save_represent="complex"))
+    if use_noise:
+        sys.add(Noise(name="gaussian_noise", disp_factor=noise_scale))
     sys.add(Fibre(name="6_passive_fibre", length=Lp_4, gamma=gamma_passive, beta=np.array(
-        [0, 0, 22.2]), total_steps=int(Lp_4/step_size), traces=100, local_error=local_error, use_all=use_all, method=method, cycle=f'cycle{int(i)}', dir=cycleDir, save_represent="both"))
+        [0, 0, 22.2]), total_steps=int(Lp_4/step_size), traces=100, local_error=local_error, use_all=use_all, method=method, cycle=f'cycle{int(i)}', save_represent="complex"))
     sys.add(Splitter(name="splitter", loss=C2))  # use from sh script
-
 sys.run()
 
-sys.save_df_to_csv(Dir, is_temporal=True)
-sys.save_df_to_csv(Dir, is_temporal=False)
+sys.init_df(is_temporal=True, save_power=True)
+sys.init_df(is_temporal=False, save_power=True)
 
-sys.init_df(is_temporal=True)
-sys.init_df(is_temporal=False)
+#sys.save_df_to_csv(Dir, is_temporal=True)
+#sys.save_df_to_csv(Dir, is_temporal=False)
 
 cycle_names = list(set(sys.df_temp.index.get_level_values('cycle').values))
 cycle_names.sort()
@@ -351,7 +378,7 @@ output_field_temp = get_output_field(sys.df_temp, cycle_names[-1])
 output_field_spec = get_output_field(sys.df_spec, cycle_names[-1])
 
 draw_output_fiiled_graph(domain, output_field_temp,
-                         output_field_spec, graph_dir)
+                        output_field_spec, graph_dir)
 
 prominence_temp = (np.amax(output_field_temp)/1000)
 prominence_spec = (np.amax(output_field_spec)/1000)
@@ -362,12 +389,13 @@ result_temp.to_csv(os.path.join(graph_dir, "laser_info_temp.csv"))
 
 energy_change(result_temp, graph_dir)
 
-# result_spec = get_laser_info(
-#     sys.df_spec, domain, cycle_names[-1], folder_name, prominence_spec, graph_dir, False)
-# result_spec.to_csv(os.path.join(graph_dir, "laser_info_spec.csv"))
+result_spec = get_laser_info(
+    sys.df_spec, domain, cycle_names[-1], folder_name, prominence_spec, graph_dir, False)
+result_spec.to_csv(os.path.join(graph_dir, "laser_info_spec.csv"))
 
-sys.save_last_cycle_df_to_csv(graph_dir, is_temporal=True)
-sys.save_last_cycle_df_to_csv(graph_dir, is_temporal=False)
+sys.save_last_cycle_df_to_csv(graph_dir, save_represent="complex")
+sys.save_last_cycle_df_to_csv(graph_dir, save_represent="temporal")
+sys.save_last_cycle_df_to_csv(graph_dir, save_represent="spectral")
 
 x = domain.t
 d_x = x[1] - x[0]

@@ -50,6 +50,7 @@ from .modules.dispersion import Dispersion
 from .modules.static_pump_wdm import StaticPumpWDM
 from .modules.storage import Storage
 from .modules.fibre_plotter import FibrePlotter
+from .modules.noise import Noise
 
 try:
     from .modules.opencl_fibre import OpenclFibre

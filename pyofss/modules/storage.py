@@ -183,6 +183,7 @@ class Storage(object):
     def save_all_storage_to_dir_as_df(
         self,
         is_temporal=True,
+        save_power = True,
         channel=None,
     ):
         if self.dir_temp and self.dir_spec is not None:
@@ -191,20 +192,35 @@ class Storage(object):
             else:
                 dir = self.dir_spec
 
-            (x, y, z) = self.get_plot_data(is_temporal=is_temporal)
+            if save_power:
+                (x, y, z) = self.get_plot_data(is_temporal=is_temporal)
+            else:
+                y = self.As
+                z = self.z
+
             index = pd.MultiIndex.from_product([z], names=["z [mm]"])
             df1 = pd.DataFrame(y, index=index)
             file_name = os.path.join(dir, f"{self.fibre_name}.csv")
             with open(file_name, "w") as f:
                 df1.to_csv(file_name)
+            file_name_info = os.path.join(dir, f"current_info.txt")
+            with open(file_name_info, 'w') as f:
+                f.write(f"current cycle: {self.cycle}, current fibre: {self.fibre_name}")
 
     def get_df(
         self,
         is_temporal=True,
         z_curr=0,
+        save_power = True,
         channel=None,
     ):
-        (x, y, z) = self.get_plot_data(is_temporal=is_temporal)
+        if save_power:
+            (x, y, z) = self.get_plot_data(is_temporal=is_temporal)
+        else:
+            y = self.As
+            x = self.t
+            z = self.z
+
         arr_z = np.array(z)*10**6 + z_curr
         if self.cycle and self.fibre_name is not None:
             iterables = [[self.cycle], [self.fibre_name], arr_z]

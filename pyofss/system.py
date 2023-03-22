@@ -32,8 +32,10 @@ import os
 
 from .domain import Domain
 from .modules.fibre import Fibre
+from .modules.splitter import Splitter
 from .modules.storage import check_dir
-
+from .field import energy, spectrum_width_params
+from scipy.signal import find_peaks
 
 def field_save(field, filename='field_out'):
     np.savez_compressed(filename, field=field)
@@ -63,7 +65,7 @@ class System(object):
     in a dictionary.
     """
 
-    def __init__(self, domain=Domain(), field=None):
+    def __init__(self, domain=Domain(), field=None, charact_dir=None):
         self.domain = domain
         self.field = None
         self.fields = None
@@ -71,9 +73,14 @@ class System(object):
         self.clear(remove_modules=True)
         self.df_temp = None
         self.df_spec = None
+        self.df_complex = None
 
         if field is not None:
             self.field = field
+
+        if charact_dir is not None:
+            check_dir(charact_dir)
+            self.charact_dir = charact_dir
 
     def clear(self, remove_modules=False):
         """
@@ -108,33 +115,37 @@ class System(object):
 
         raise Exception("Tried to modify non-existing module in system")
 
-    def init_df(self, is_temporal=True):
+    def init_df(self, is_temporal=True, save_power=True):
         df = pd.DataFrame()
         z_curr = 0
         for obj in self.modules:
             if type(obj) is Fibre:
                 df_new = obj.stepper.storage.get_df(
-                    z_curr=z_curr, is_temporal=is_temporal)
-                z_curr = df_new.iloc[-1].name[2]
-                # concatenate dataframes that were received from different fibres
-                df = pd.concat([df, df_new])
-        if is_temporal:
-            self.df_temp = df
+                    z_curr=z_curr, is_temporal=is_temporal, save_power=save_power)
+                # concatenate dataframes that were received from different fibres if not empty
+                if not df_new.empty:
+                    z_curr = df_new.iloc[-1].name[2]
+                    df = pd.concat([df, df_new])
+        if save_power:
+            if is_temporal:
+                self.df_temp = df
+            else:
+                self.df_spec = df
         else:
-            self.df_spec = df
+            self.df_complex = df
 
     # save the whole laser dataframe only if needed
-    def save_df_to_csv(self, dir, name="laser", is_temporal=True):
+    def save_df_to_csv(self, dir, name="laser", is_temporal=True, save_power=True):
         check_dir(dir)
         if is_temporal:
             if self.df_temp is None:
-                self.init_df(is_temporal=is_temporal)
+                self.init_df(is_temporal=is_temporal, save_power=save_power)
             file_name = os.path.join(dir, name + "_temp.csv")
             with open(file_name, "w") as f:
                 self.df_temp.to_csv(file_name)
         else:
             if self.df_spec is None:
-                self.init_df(is_temporal=is_temporal)
+                self.init_df(is_temporal=is_temporal, save_power=save_power)
             file_name = os.path.join(dir, name + "_spec.csv")
             with open(file_name, "w") as f:
                 self.df_spec.to_csv(file_name)
@@ -145,20 +156,70 @@ class System(object):
         cycle_names.sort()
         return df_laser.loc[(cycle_names[-1])]
 
-    def save_last_cycle_df_to_csv(self, dir, name="last_cycle", is_temporal=True):
+    def save_last_cycle_df_to_csv(self, dir, name="last_cycle", save_represent="complex"):
         check_dir(dir)
-        if is_temporal:
+        if (save_represent == "both"):
             if self.df_temp is None:
-                self.init_df(is_temporal=is_temporal)
+                self.init_df(is_temporal=True, save_power=True)
             file_name = os.path.join(dir, name + "_temp.csv")
             with open(file_name, "w") as f:
                 self.get_last_cycle_df(self.df_temp).to_csv(file_name)
-        else:
+
             if self.df_spec is None:
-                self.init_df(is_temporal=is_temporal)
+                self.init_df(is_temporal=False, save_power=True)
             file_name = os.path.join(dir, name + "_spec.csv")
             with open(file_name, "w") as f:
                 self.get_last_cycle_df(self.df_spec).to_csv(file_name)
+        elif (save_represent == "temporal"):
+            if self.df_temp is None:
+                self.init_df(is_temporal=True, save_power=True)
+            file_name = os.path.join(dir, name + "_temp.csv")
+            with open(file_name, "w") as f:
+                self.get_last_cycle_df(self.df_temp).to_csv(file_name)
+        elif (save_represent == "spectral"):
+            if self.df_spec is None:
+                self.init_df(is_temporal=False, save_power=True)
+            file_name = os.path.join(dir, name + "_spec.csv")
+            with open(file_name, "w") as f:
+                self.get_last_cycle_df(self.df_spec).to_csv(file_name)
+        elif (save_represent == "complex"):
+            if self.df_complex is None:
+                self.init_df(is_temporal=True, save_power=False)
+            file_name = os.path.join(dir, name + "_complex.csv")
+            with open(file_name, "w") as f:
+                self.get_last_cycle_df(self.df_complex).to_csv(file_name)
+
+    def get_laser_info(self):
+        def get_duration_spec(P, d_x):
+            heigth_fwhm, fwhm, left_ind, right_ind = spectrum_width_params(
+                P, prominence=(np.amax(P)/10))
+            return abs(fwhm)*d_x if fwhm is not None else None
+        def get_peaks(P):
+            peaks, _ = find_peaks(P, height=0, prominence=(np.amax(P)/10))
+            return peaks
+            
+        characteristic = ["max_value", "energy", "duration", "spec_width", "peaks"]
+        iterables = [characteristic]
+        df_results = pd.DataFrame(index=self.df_temp.index, columns=characteristic)
+        df_results['max_value'] = self.df_temp.max(axis=1).values
+        df_results['energy'] = self.df_temp.apply(
+            lambda row: energy(row, self.domain.t), axis=1).values
+
+        df_results['duration'] = self.df_temp.apply(
+            lambda row: get_duration_spec(row, self.domain.dt), axis=1).values
+        df_results['spec_width'] = self.df_spec.apply(
+            lambda row: get_duration_spec(row, self.domain.dnu), axis=1).values
+        df_results['peaks'] = self.df_temp.apply(
+            lambda row: get_peaks(row), axis=1)
+        
+        return df_results
+            
+    def update_charact_file(self):
+        if self.charact_dir is not None:
+            self.init_df(is_temporal=True, save_power=True)
+            self.init_df(is_temporal=False, save_power=True)
+            df_results = self.get_laser_info()
+            df_results.to_csv(os.path.join(self.charact_dir, "laser_info.csv"))
 
     def run(self):
         """
@@ -169,5 +230,5 @@ class System(object):
         for module in self.modules:
             self.field = module(self.domain, self.field)
             self.fields[module.name] = self.field
-
-        self.init_df()
+            if type(module) is Splitter:
+                self.update_charact_file()

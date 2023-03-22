@@ -56,7 +56,7 @@ class FibrePlotter(object):
         )
         return anim
 
-    def draw_heat_map(self, z_start=0, prominence=1e-20, is_temporal=True, subplot_spec=None, fig=None, title=None, vmin=None, vmax=None):
+    def draw_heat_map(self, z_start=0, prominence=1e-20, is_temporal=True, subplot_spec=None, fig=None, title=None, vmin=None, vmax=None, width_param = 4, is_active=True):
         if (fig and subplot_spec is not None):
             inner = gridspec.GridSpecFromSubplotSpec(1, 2,
                                                      subplot_spec=subplot_spec, wspace=0.1, hspace=0.1)
@@ -73,7 +73,7 @@ class FibrePlotter(object):
             axes[1].set_title(title)
 
         self.z += z_start
-        P = self.y[-1]
+        P = self.y[-1] if is_active else self.y[0]
         d_t = abs(self.x[1] - self.x[0])
 
         if (is_temporal):
@@ -92,8 +92,8 @@ class FibrePlotter(object):
         axes[0].set_ylabel(self.ylabel)
         axes[0].set_title(f"Power profile at {self.z[-1]}km")
 
-        left_ind = int(left_ind - 4*d_t*fwhm)
-        right_ind = int(right_ind + 4*d_t*fwhm)
+        left_ind = int(left_ind - width_param*d_t*fwhm)
+        right_ind = int(right_ind + width_param*d_t*fwhm)
         X, Y = np.meshgrid(self.z, self.x[left_ind:right_ind])
         h = self.y[:, left_ind:right_ind]
         cf = axes[1].pcolormesh(X, Y, np.transpose(

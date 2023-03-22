@@ -118,43 +118,59 @@ class Amplifier(AmplifierBase):
 
 
 class Amplifier2LevelModel(AmplifierBase):
-    def __init__(self, name="amplifier2LevelModel", Pp=None, N=None):
+    def __init__(self, name="amplifier2LevelModel", Pp=None, N=None, Rr=None):
         print(f"use two level Yb gain model")
         #constatnts 
-        self.h_p = 6.62*1e-34
-        self.T = 850.0 * pow(0.1,6) # units? s
-        self.a = 3.0 * pow(0.1,6)
-        self.b = 60.0 * pow(0.1,6)
+        self.h_p = 6.62 * 1e-34
+        self.T = 850.0 * 1e-6 # units s
+        self.a = 3.0 * 1e-6 # units? m
+        self.b = 60.0 * 1e-6
         self.NA = 0.13
         self.lamb_p = 976.0
-        self.N = N * (10**25) * np.pi * self.a **2 # density per unit length
+        self.N = N * (1e25) * np.pi * self.a **2 # density per unit length
         self._Pp = Pp
+        self.Tr = 1/Rr
 
         self.domain = None
 
         self.Pp_list = []
+        self.inversion_factor_list = []
+        self.gs_list = []
 
-        self.sigma12_p = 2.5 * pow(0.1,24) # units? m2
-        self.sigma21_p = 2.44* pow(0.1,24)
-        self.load_sigma_s()
+        self.sigma12_p = 2.5 * 1e-24 # units? m2
+        self.sigma21_p = 2.44 * 1e-24
 
     def load_sigma_s(self):
         import os.path
         df = pd.read_csv(os.path.dirname(__file__) + '/../data/CrossSectionData.dat', delimiter="\t", header=None)
-        self.delta_nu = df[df.columns[0]]
-        self.sigma12_s = df[df.columns[1]]
-        self.sigma21_s = df[df.columns[2]]
+
+        self.delta_nu = df[df.columns[0]].values
+        self.sigma12_s = df[df.columns[1]].values
+        self.sigma21_s = df[df.columns[2]].values
+
+    def interpolate_sigma_s(self):
+        import os.path
+        from scipy import interpolate
+        IUS = interpolate.InterpolatedUnivariateSpline
+        df = pd.read_csv(os.path.dirname(__file__) + "/../data/CrossSectionDataExp.txt", delimiter=",")
+
+        spl12_s_raw = IUS(df[df.columns[0]] * 1e9, df[df.columns[1]] * 1e27, ext=1)
+        spl21_s_raw = IUS(df[df.columns[0]] * 1e9, df[df.columns[2]] * 1e27, ext=1)
+
+        self.sigma12_s = spl12_s_raw(self.domain.Lambda)*1e-27
+        self.sigma21_s = spl21_s_raw(self.domain.Lambda)*1e-27
 
     def set_domain(self, domain):
         self.domain = domain
-        self.interpolate_sigma()
+        self.interpolate_sigma_s()
+        # self.load_sigma_s()
 
     @property
     def rho_s(self):
         try:
             return self._rho_s
         except:
-            V = (2.0 * np.pi / self.domain.Lambda) * self.a * self.NA
+            V = (2.0 * np.pi / self.domain.Lambda) * self.a * self.NA * 1e9
             omega_s = self.a * (0.616 + 1.66/pow(V,1.5) + 0.987/pow(V,6.0))
             Gamma_s = 1.0 - np.exp(-2.0 * self.a**2 / (omega_s * omega_s))
             self._rho_s = Gamma_s / (np.pi * self.a**2)
@@ -174,7 +190,7 @@ class Amplifier2LevelModel(AmplifierBase):
         try:
             return self._Psat_s
         except:
-            self._Psat_s = (self.h_p * self.domain.nu)/ (self.T * (self.sigma12_s + self.sigma21_s) * self.rho_s) # 10**24 to got from ps to s to get Wt
+            self._Psat_s = (self.h_p * self.domain.nu * 1e12) / (self.T * (self.sigma12_s + self.sigma21_s) * self.rho_s) 
             return self._Psat_s
 
     @property
@@ -182,7 +198,7 @@ class Amplifier2LevelModel(AmplifierBase):
         try:
             return self._Psat_p
         except:
-            self._Psat_p = (self.h_p * lambda_to_nu(self.lamb_p)) / (self.T * (self.sigma12_p + self.sigma21_p) * self.rho_p) # 10**24 to got from ps to s to get Wt
+            self._Psat_p = (self.h_p * lambda_to_nu(self.lamb_p) * 1e12) / (self.T * (self.sigma12_p + self.sigma21_p) * self.rho_p)
             return self._Psat_p
         
     @property
@@ -190,7 +206,8 @@ class Amplifier2LevelModel(AmplifierBase):
         try:
             return self._eta_s
         except:
-            self._eta_s =self.sigma12_s * self.rho_s * self.N
+            self._eta_s = self.sigma12_s * self.rho_s * self.N
+            return self._eta_s
 
     @property
     def eta_p(self):
@@ -198,6 +215,7 @@ class Amplifier2LevelModel(AmplifierBase):
             return self._eta_p
         except:
             self._eta_p = self.sigma12_p * self.rho_p * self.N
+            return self._eta_p
 
     @property
     def alpha_s(self):
@@ -218,22 +236,28 @@ class Amplifier2LevelModel(AmplifierBase):
     @property
     def Pp(self):
         return self._Pp
-
-    def interpolate_sigma(self):
-        from scipy import interpolate
-        IUS = interpolate.InterpolatedUnivariateSpline
-
-        spl12_s = IUS(self.delta_nu, self.sigma12_s)
-        spl21_s = IUS(self.delta_nu, self.sigma21_s)
-
-        self.delta_nu = self.domain.nu - self.domain.centre_nu
-        self.sigma12_s = spl12_s(self.delta_nu)
-        self.sigma21_s = spl21_s(self.delta_nu)
+    
+    @property
+    def ratio_p(self):
+        try:
+            return self._ratio_p
+        except:
+            self._ratio_p = self.sigma12_p / (self.sigma12_p + self.sigma21_p)
+            return self._ratio_p
+        
+    @property
+    def ratio_s(self):
+        try:
+            return self._ratio_s
+        except:
+            self._ratio_s = self.sigma12_s / (self.sigma12_s + self.sigma21_s)
+            return self._ratio_s
 
     def calculate_N2(self, Ps):
-        numerator = self.Pp / self.Psat_p + np.sum(Ps / self.Psat_s)
-        denominator = 1 + numerator
+        numerator = self.ratio_p * self.Pp / self.Psat_p + np.sum((lambda x: x[~np.isnan(x)])(self.ratio_s * Ps / self.Psat_s))
+        denominator = 1 + self.Pp / self.Psat_p + np.sum((lambda x: x[~np.isnan(x)])(Ps / self.Psat_s))
         N2 = (numerator/denominator) * self.N
+        self.inversion_factor_list.append(numerator/denominator)
         return N2
     
     def calculate_g_s(self, N2):
@@ -244,17 +268,17 @@ class Amplifier2LevelModel(AmplifierBase):
     
     def update_Pp(self, g_p, h):
         self.Pp_list.append(self._Pp)
-        self._Pp = self._Pp * np.exp(g_p * h)
+        self._Pp = self._Pp * np.exp(g_p * h * 1e3)
     
     def factor(self, A, h): 
         # g_s: array in frequency domain is calculated with respect to current N2 and N1: recalculated on yeach z step
         # g_p: value is calculated with respect to current N2 and N1: recalculated on yeach z step 
-
         if self.domain is None:
             raise Exception("Domain is not preset.")
 
-        N2 = self.calculate_N2(spectral_power(A))
+        N2 = self.calculate_N2(spectral_power(A)*len(A)*self.domain.dt/(self.Tr))
         g_s = self.calculate_g_s(N2)
         g_p = self.calculate_g_p(N2)
+        self.gs_list.append(g_s)
         self.update_Pp(g_p, h)
-        return g_s
+        return fftshift(g_s * h * 1e3 / 2)
