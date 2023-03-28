@@ -142,10 +142,12 @@ class Fibre(object):
                                **file_import_arguments)
 
     def __call__(self, domain, field):
-        # __call__ -> generate_linearity(domain) -> getattr -> default_linearity
-        self.linearity(domain)
-        self.nonlinearity(domain)
-        self.calculate_refrence_length(domain, field)
+        if self.domain != domain or \
+                self.linearity.factor is None or \
+                self.nonlinearity.factor is None:
+            self.linearity(domain)
+            self.nonlinearity(domain)
+        	self.calculate_refrence_length(domain, field)
         # Set temporal and spectral arrays for storage:
         self.stepper.storage.t = domain.t
         self.stepper.storage.nu = domain.nu
