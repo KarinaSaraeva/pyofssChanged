@@ -41,6 +41,9 @@ class FiberInitError(Exception):
     pass
 
 OPENCL_OPERATIONS = Template("""
+    #ifdef cl_arm_printf
+        #pragma OPENCL EXTENSION cl_amd_printf: enable
+    #endif
     #ifdef cl_khr_fp64 // Khronos extension
         #pragma OPENCL EXTENSION cl_khr_fp64 : enable
         #define PYOPENCL_DEFINE_CDOUBLE
@@ -176,20 +179,19 @@ OPENCL_OPERATIONS = Template("""
     __kernel void cl_temporal_power(__global c${dorf}_t* field,
                                 __global ${dorf}* temporal_power) {
         int gid = get_global_id(0);
+    
         c${dorf}_t c = field[gid];
         temporal_power[gid] = sqrt(c.real * c.real + c.imag * c.imag);
     }
 
-    __kernel void cl_simpson(__global ${dorf}* temporal_power, __global ${dorf}* output, const ${dorf} h, const int size) {
-        int gid = get_global_id(0);
-                
-        if (gid <= size) {
-            float x0 = temporal_power[gid];
-            float x1 = temporal_power[gid + 1];
-            float x2 = temporal_power[gid + 2];
-            
-            output[gid] = (x2 - x0) * (x0 + 4.0f * x1 + x2) * h / 3.0f;
-        }
+    __kernel void cl_simpson(__global ${dorf}* temporal_power, __global ${dorf}* output, __global ${dorf}* h) {
+        int gid = get_global_id(0);      
+        ${dorf} x0 = temporal_power[gid];
+        ${dorf} x1 = temporal_power[gid + 1];
+        ${dorf} x2 = temporal_power[gid + 2];
+        
+        ${dorf} result = (x0 + (${dorf})4.0f * x1 + x2);
+        output[gid] = result * h[0] / ((${dorf})3.0f) ;
     }
 
 """)
@@ -412,11 +414,11 @@ class OpenclFibre(object):
         temporal_power = cl_array.zeros(self.queue, self.shape, self.np_float)
         self.prg.cl_temporal_power(self.queue, self.shape, None, field.data, temporal_power.data)
         print(f"max temp power: {np.amax(temporal_power.get())}")
-        simpson_result = cl_array.zeros(self.queue, self.shape, self.np_float)
+        simpson_result = cl_array.zeros(self.queue, tuple([self.shape[0] - 2]), self.np_float)
         h = cl_array.to_device(self.queue, self.domain.dt.astype(self.np_float))
-        size = cl_array.to_device(self.queue, np.array([self.shape[0]-2]).astype(np.intc))
+        size = cl_array.to_device(self.queue, np.array([self.shape[0]-2]).astype(self.np_float))
         print(f"h current: {h.get()}")
-        self.prg.cl_simpson(self.queue, self.shape, None, temporal_power.data, simpson_result.data, h.data, size.data)
+        self.prg.cl_simpson(self.queue, tuple([self.shape[0] - 2]), None, temporal_power.data, simpson_result.data, h.data)
         energy = np.sum(simpson_result.get())
         print(f"energy current: {energy}")
         return energy
