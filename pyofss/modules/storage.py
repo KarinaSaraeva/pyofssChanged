@@ -227,7 +227,7 @@ class Storage(object):
             index = pd.MultiIndex.from_product(
                 iterables,  names=["cycle", "fibre", "z [mm]"])
         else:
-            iterables = [z*10**6]
+            iterables = [z]
             index = pd.MultiIndex.from_product(iterables, names=["z [mm]"])
         return pd.DataFrame(y, index=index)
 

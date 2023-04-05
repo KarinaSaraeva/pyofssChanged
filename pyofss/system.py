@@ -124,7 +124,7 @@ class System(object):
                     z_curr=z_curr, is_temporal=is_temporal, save_power=save_power)
                 # concatenate dataframes that were received from different fibres if not empty
                 if not df_new.empty:
-                    z_curr = df_new.iloc[-1].name[2]
+                    z_curr = df_new.iloc[-1].name[-1]
                     df = pd.concat([df, df_new])
         if save_power:
             if is_temporal:
@@ -197,6 +197,9 @@ class System(object):
         def get_peaks(P):
             peaks, _ = find_peaks(P, height=0, prominence=(np.amax(P)/10))
             return peaks
+        
+        if self.df_temp is None: self.init_df(is_temporal=True, save_power=True)
+        if self.df_spec is None: self.init_df(is_temporal=False, save_power=True)
             
         characteristic = ["max_value", "energy", "duration", "spec_width", "peaks"]
         iterables = [characteristic]
@@ -216,8 +219,6 @@ class System(object):
             
     def update_charact_file(self):
         if self.charact_dir is not None:
-            self.init_df(is_temporal=True, save_power=True)
-            self.init_df(is_temporal=False, save_power=True)
             df_results = self.get_laser_info()
             df_results.to_csv(os.path.join(self.charact_dir, "laser_info.csv"))
 

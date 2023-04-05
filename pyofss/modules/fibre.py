@@ -90,6 +90,7 @@ class Fibre(object):
         self.L_NL = None
         self.refrence_length = None
         self.cycle = cycle
+        self.domain = None
 
         if (use_Yb_model):
             self.amplifier = Amplifier2LevelModel(Pp=Pp_0, N=N, Rr=Rr)
@@ -147,7 +148,7 @@ class Fibre(object):
                 self.nonlinearity.factor is None:
             self.linearity(domain)
             self.nonlinearity(domain)
-        	self.calculate_refrence_length(domain, field)
+            self.calculate_refrence_length(domain, field)
         # Set temporal and spectral arrays for storage:
         self.stepper.storage.t = domain.t
         self.stepper.storage.nu = domain.nu

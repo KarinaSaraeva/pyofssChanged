@@ -35,6 +35,10 @@ from string import Template
 
 from .linearity import Linearity
 from .nonlinearity import Nonlinearity
+from pyofss.modules.amplifier import Amplifier, Amplifier2LevelModel
+
+class FiberInitError(Exception):
+    pass
 
 OPENCL_OPERATIONS = Template("""
     #ifdef cl_khr_fp64 // Khronos extension
@@ -169,6 +173,25 @@ OPENCL_OPERATIONS = Template("""
             im_gamma, field[gid]);
     }
 
+    __kernel void cl_temporal_power(__global c${dorf}_t* field,
+                                __global ${dorf}* temporal_power) {
+        int gid = get_global_id(0);
+        c${dorf}_t c = field[gid];
+        temporal_power[gid] = sqrt(c.real * c.real + c.imag * c.imag);
+    }
+
+    __kernel void cl_simpson(__global ${dorf}* temporal_power, __global ${dorf}* output, const ${dorf} h, const int size) {
+        int gid = get_global_id(0);
+                
+        if (gid <= size) {
+            float x0 = temporal_power[gid];
+            float x1 = temporal_power[gid + 1];
+            float x2 = temporal_power[gid + 2];
+            
+            output[gid] = (x2 - x0) * (x0 + 4.0f * x1 + x2) * h / 3.0f;
+        }
+    }
+
 """)
 
 
@@ -182,9 +205,11 @@ class OpenclFibre(object):
         * cl_ss_sym_rk4
     """
     def __init__(self, name="ocl_fibre", length=1.0, alpha=None,
-                 beta=None, gamma=0.0, method="cl_rk4ip", total_steps=100,
+                 beta=None, gamma=0.0, method="cl_ss_symmetric", total_steps=100,
                  self_steepening=False, use_all=False, centre_omega=None,
                  tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18,
+                 small_signal_gain=None, E_sat=None, lamb0=None, bandwidth=None, 
+                 use_Yb_model=False, Pp_0 = None, N = None, Rr=None,
                  dorf='double', ctx=None, fast_math=False):
 
         self.name = name
@@ -249,12 +274,25 @@ class OpenclFibre(object):
         else:
             self.cl_n = getattr(self, 'cl_n_default')
         
+        if (use_Yb_model):
+            self.amplifier = Amplifier2LevelModel(Pp=Pp_0, N=N, Rr=Rr)
+        else:
+            if (small_signal_gain is not None) and (E_sat is not None):
+                self.amplifier = Amplifier(
+                    gain=self.small_signal_gain, E_sat=E_sat, length=self.length, lamb0=lamb0, bandwidth=bandwidth, steps=total_steps)
+            elif (small_signal_gain is None) and (E_sat is None):
+                self.amplifier = None
+            else:
+                assert(FiberInitError(
+                    'Not enought parameters to initialise amplification fiber: both small_signal_gain and E_sat must be passed!'))
+                
         self.linearity = Linearity(alpha, beta, sim_type="default",
-                                    use_cache=True, centre_omega=centre_omega, phase_lim=True)
+                                    use_cache=True, centre_omega=centre_omega, phase_lim=True, amplifier=self.amplifier)
         self.nonlinearity = Nonlinearity(gamma, None, self_steepening,
                                          False, 0,
                                          use_all, tau_1, tau_2, f_R)
         self.factor = None
+        self.energy_list = []
 
     def __call__(self, domain, field):
         # Setup plan for calculating fast Fourier transforms:
@@ -370,11 +408,24 @@ class OpenclFibre(object):
         """ Copy contents of one buffer into another. """
         cl.enqueue_copy(self.queue, dst_buffer.data, src_buffer.data).wait()
 
+    def compute_characts(self, field):
+        temporal_power = cl_array.zeros(self.queue, self.shape, self.np_float)
+        self.prg.cl_temporal_power(self.queue, self.shape, None, field.data, temporal_power.data)
+        print(f"max temp power: {np.amax(temporal_power.get())}")
+        simpson_result = cl_array.zeros(self.queue, self.shape, self.np_float)
+        h = cl_array.to_device(self.queue, self.domain.dt.astype(self.np_float))
+        size = cl_array.to_device(self.queue, np.array([self.shape[0]-2]).astype(np.intc))
+        print(f"h current: {h.get()}")
+        self.prg.cl_simpson(self.queue, self.shape, None, temporal_power.data, simpson_result.data, h.data, size.data)
+        energy = np.sum(simpson_result.get())
+        print(f"energy current: {energy}")
+        return energy
+
     def cl_linear(self, field_buffer, stepsize, factor_buffer):
         """ Linear part of step. """
         self.plan.execute(field_buffer.data, inverse=True)
         self.prg.cl_linear(self.queue, self.shape, None, field_buffer.data,
-                           factor_buffer.data, self.np_float(stepsize))
+                           factor_buffer.data, self.np_float(stepsize)) # remake for amplification fibre
         self.plan.execute(field_buffer.data)
 
     def cl_linear_cached(self, field_buffer, stepsize, factor_buffer):
@@ -386,8 +437,13 @@ class OpenclFibre(object):
             self.cached_factor = True
 
         self.plan.execute(field_buffer.data, inverse=True)
-        self.prg.cl_linear_cached(self.queue, self.shape, None,
+        if self.amplifier is None:
+            self.prg.cl_linear_cached(self.queue, self.shape, None,
                                   field_buffer.data, self.buf_factor.data)
+        else:
+            amp_factor = cl_array.to_device(self.amplifier.factor(field_buffer.data, self.stepsize))
+            self.prg.cl_linear_cached(self.queue, self.shape, None,
+                                  field_buffer.data, amp_factor.data*self.buf_factor.data)
         self.plan.execute(field_buffer.data)
 
     def cl_n_default(self, field_buffer, stepsize):
@@ -474,6 +530,7 @@ class OpenclFibre(object):
         self.cl_linear(field_temp, half_step, factor)
         self.cl_nonlinear(field, stepsize, field_temp)
         self.cl_linear(field, half_step, factor)
+        self.energy_list.append(self.compute_characts(field))
     
     def cl_ss_sym_rk4(self, field, field_temp, field_linear, factor, stepsize):
         """ 
