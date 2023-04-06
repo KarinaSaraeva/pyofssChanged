@@ -23,7 +23,9 @@ import os
 import warnings
 
 from pyofss import field
-from pyofss.field import temporal_power, spectral_power
+from pyofss.field import temporal_power, spectral_power, energy, spectrum_width_params
+
+from scipy.signal import find_peaks
 
 import pandas as pd
 
@@ -144,6 +146,12 @@ class Storage(object):
         # Accumulate number of fft and ifft operations used for a stepper run:
         self.fft_total = 0
 
+        self.energy_list = []
+        self.max_power_list = []
+        self.peaks_list = []
+        self.duration_list = []
+        self.spec_width_list = []
+
     def reset_array(self):
         self.As = []
         self.z = []
@@ -166,6 +174,24 @@ class Storage(object):
         """
         self.z.append(z)
         self.As.append(A)
+        self.update_characts(A)
+
+    def update_characts(self, A):
+        def get_peaks(P):
+            peaks, _ = find_peaks(P, height=0, prominence=(np.amax(P)/10))
+            return peaks
+        def get_duration(P, d_x):
+            heigth_fwhm, fwhm, left_ind, right_ind = spectrum_width_params(
+                P, prominence=(np.amax(P)/10))
+            return abs(fwhm)*d_x if fwhm is not None else None
+        
+        self.energy_list.append(energy(A, self.t))
+        temporal_power_arr = temporal_power(A)
+        spectral_power_arr = spectral_power(A)
+        self.max_power_list.append(np.amax(temporal_power_arr))
+        self.peaks_list.append(get_peaks(temporal_power_arr))
+        self.duration_list.append(get_duration(temporal_power_arr, self.t[1] - self.t[0]))
+        self.spec_width_list.append(get_duration(spectral_power_arr, self.nu[1] - self.nu[0]))
 
     def save_all_storage_to_dir(
         self,
@@ -227,9 +253,34 @@ class Storage(object):
             index = pd.MultiIndex.from_product(
                 iterables,  names=["cycle", "fibre", "z [mm]"])
         else:
-            iterables = [z]
+            iterables = [arr_z]
             index = pd.MultiIndex.from_product(iterables, names=["z [mm]"])
         return pd.DataFrame(y, index=index)
+    
+    def get_df_result(
+        self,
+        z_curr=0,
+    ):
+        z = self.z
+
+        arr_z = np.array(z)*10**6 + z_curr
+        characteristic = ["max_value", "energy", "duration", "spec_width", "peaks"]
+        if self.cycle and self.fibre_name is not None:
+            iterables = [[self.cycle], [self.fibre_name], arr_z]
+            index = pd.MultiIndex.from_product(
+                iterables,  names=["cycle", "fibre", "z [mm]"])
+            
+        else:
+            iterables = [arr_z]
+            index = pd.MultiIndex.from_product(iterables, names=["z [mm]"])
+
+        df_results = pd.DataFrame(index=index, columns=characteristic)
+        df_results["max_value"] = self.max_power_list
+        df_results["energy"] = self.energy_list
+        df_results["duration"] = self.duration_list
+        df_results["spec_width"] = self.spec_width_list
+        df_results["peaks"] = self.peaks_list
+        return df_results
 
     def save_step_to_file(self, is_temporal=True, channel=None, i=-1, **file_import_arguments):
         if self.dir_temp and self.dir_spec is not None:

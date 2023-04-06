@@ -23,6 +23,7 @@
 import numpy as np
 import pyopencl as cl
 import pyopencl.array as cl_array
+import pandas as pd
 
 import sys as sys0
 version_py = sys0.version_info[0]
@@ -215,10 +216,11 @@ class OpenclFibre(object):
                  tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18,
                  small_signal_gain=None, E_sat=None, lamb0=None, bandwidth=None, 
                  use_Yb_model=False, Pp_0 = None, N = None, Rr=None,
-                 dorf='double', ctx=None, fast_math=False):
+                 dorf='double', ctx=None, fast_math=False, cycle=None):
 
         self.name = name
-        
+        self.cycle = cycle
+
         self.domain = None
 
         self.use_all = use_all
@@ -333,6 +335,32 @@ class OpenclFibre(object):
                           self.buf_interaction, self.buf_factor, self.stepsize)
 
         return self.buf_field.get()
+
+    #for usual fibre this info is in storage
+    def get_df_result(
+        self,
+        z_curr=0,
+    ):
+        z = self.zs[:-1]
+
+        arr_z = np.array(z)*10**6 + z_curr
+        characteristic = ["max_value", "energy", "duration", "spec_width", "peaks"]
+        if self.cycle and self.name is not None:
+            iterables = [[self.cycle], [self.name], arr_z]
+            index = pd.MultiIndex.from_product(
+                iterables,  names=["cycle", "fibre", "z [mm]"])
+        else:
+            iterables = [arr_z]
+            index = pd.MultiIndex.from_product(iterables, names=["z [mm]"])
+
+        df_results = pd.DataFrame(index=index, columns=characteristic)
+        df_results["max_value"] = self.max_power_list
+        df_results["energy"] = self.energy_list
+        # duration and spec width are not calculated in OpenclFibre
+        # df_results["duration"] = self.duration_list   
+        # df_results["spec_width"] = self.spec_width_list
+        df_results["peaks"] = self.peaks_list
+        return df_results
 
     def cl_initialise(self, dorf="float"):
         """ Initialise opencl related parameters. """

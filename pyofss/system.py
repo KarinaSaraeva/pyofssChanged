@@ -33,6 +33,7 @@ import scipy.integrate as integrate
 
 from .domain import Domain
 from .modules.fibre import Fibre
+from .modules.opencl_fibre import OpenclFibre
 from .modules.splitter import Splitter
 from .modules.storage import check_dir
 from .field import energy, spectrum_width_params
@@ -75,6 +76,9 @@ class System(object):
         self.df_temp = None
         self.df_spec = None
         self.df_complex = None
+        self.df_results = None
+
+        self.z_curr = 0
 
         if field is not None:
             self.field = field
@@ -82,6 +86,8 @@ class System(object):
         if charact_dir is not None:
             check_dir(charact_dir)
             self.charact_dir = charact_dir
+        
+        self.charact_dir =None
 
     def clear(self, remove_modules=False):
         """
@@ -116,6 +122,7 @@ class System(object):
 
         raise Exception("Tried to modify non-existing module in system")
 
+    #must be called only for already calculated laser
     def init_df(self, is_temporal=True, save_power=True):
         df = pd.DataFrame()
         z_curr = 0
@@ -190,38 +197,25 @@ class System(object):
             with open(file_name, "w") as f:
                 self.get_last_cycle_df(self.df_complex).to_csv(file_name)
 
-    def get_laser_info(self):
-        def get_duration_spec(P, d_x):
-            heigth_fwhm, fwhm, left_ind, right_ind = spectrum_width_params(
-                P, prominence=(np.amax(P)/10))
-            return abs(fwhm)*d_x if fwhm is not None else None
-        def get_peaks(P):
-            peaks, _ = find_peaks(P, height=0, prominence=(np.amax(P)/10))
-            return peaks
+    def update_laser_info(self, obj):
+        df_new_results = None
         
-        if self.df_temp is None: self.init_df(is_temporal=True, save_power=True)
-        if self.df_spec is None: self.init_df(is_temporal=False, save_power=True)
-            
-        characteristic = ["max_value", "energy", "duration", "spec_width", "peaks"]
-        iterables = [characteristic]
-        df_results = pd.DataFrame(index=self.df_temp.index, columns=characteristic)
-        df_results['max_value'] = self.df_temp.max(axis=1).values
-        df_results['energy'] = self.df_temp.apply(
-            lambda row: integrate.simps(row, self.domain.t*1e-3), axis=1).values
+        if type(obj) is Fibre:
+                df_new_results = obj.stepper.storage.get_df_result(self.z_curr)
+        if type(obj) is OpenclFibre:
+                df_new_results = obj.get_df_result(self.z_curr)
+        
+        if df_new_results is not None:
+            self.z_curr = df_new_results.index.get_level_values("z [mm]").values[-1]
+            if self.df_results is None: 
+                self.df_results = df_new_results
+            else:
+                self.df_results = pd.concat([self.df_results, df_new_results])
 
-        df_results['duration'] = self.df_temp.apply(
-            lambda row: get_duration_spec(row, self.domain.dt), axis=1).values
-        df_results['spec_width'] = self.df_spec.apply(
-            lambda row: get_duration_spec(row, self.domain.dnu), axis=1).values
-        df_results['peaks'] = self.df_temp.apply(
-            lambda row: get_peaks(row), axis=1)
-        
-        return df_results
-            
-    def update_charact_file(self):
+    def update_charact_file(self, obj):
+        self.update_laser_info(obj)
         if self.charact_dir is not None:
-            df_results = self.get_laser_info()
-            df_results.to_csv(os.path.join(self.charact_dir, "laser_info.csv"))
+            self.df_results.to_csv(os.path.join(self.charact_dir, "laser_info.csv"))
 
     def run(self):
         """
@@ -232,5 +226,4 @@ class System(object):
         for module in self.modules:
             self.field = module(self.domain, self.field)
             self.fields[module.name] = self.field
-            if type(module) is Splitter:
-                self.update_charact_file()
+            self.update_charact_file(module)
