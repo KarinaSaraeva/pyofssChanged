@@ -29,6 +29,7 @@ except ImportError:
 import numpy as np
 import pandas as pd
 import os
+import scipy.integrate as integrate
 
 from .domain import Domain
 from .modules.fibre import Fibre
@@ -206,7 +207,7 @@ class System(object):
         df_results = pd.DataFrame(index=self.df_temp.index, columns=characteristic)
         df_results['max_value'] = self.df_temp.max(axis=1).values
         df_results['energy'] = self.df_temp.apply(
-            lambda row: energy(row, self.domain.t), axis=1).values
+            lambda row: integrate.simps(row, self.domain.t*1e-3), axis=1).values
 
         df_results['duration'] = self.df_temp.apply(
             lambda row: get_duration_spec(row, self.domain.dt), axis=1).values

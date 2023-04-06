@@ -36,6 +36,7 @@ from string import Template
 from .linearity import Linearity
 from .nonlinearity import Nonlinearity
 from pyofss.modules.amplifier import Amplifier, Amplifier2LevelModel
+from scipy.signal import find_peaks
 
 class FiberInitError(Exception):
     pass
@@ -181,17 +182,19 @@ OPENCL_OPERATIONS = Template("""
         int gid = get_global_id(0);
     
         c${dorf}_t c = field[gid];
-        temporal_power[gid] = sqrt(c.real * c.real + c.imag * c.imag);
+        temporal_power[gid] = c.real * c.real + c.imag * c.imag;
     }
 
     __kernel void cl_simpson(__global ${dorf}* temporal_power, __global ${dorf}* output, __global ${dorf}* h) {
-        int gid = get_global_id(0);      
-        ${dorf} x0 = temporal_power[gid];
-        ${dorf} x1 = temporal_power[gid + 1];
-        ${dorf} x2 = temporal_power[gid + 2];
-        
-        ${dorf} result = (x0 + (${dorf})4.0f * x1 + x2);
-        output[gid] = result * h[0] / ((${dorf})3.0f) ;
+        int gid = get_global_id(0);  
+        if (!(gid % 2)) {
+            ${dorf} x0 = temporal_power[gid];
+            ${dorf} x1 = temporal_power[gid + 1];
+            ${dorf} x2 = temporal_power[gid + 2];
+            
+            ${dorf} result = (x0 + (${dorf})4.0f * x1 + x2);
+            output[gid] = result * h[0] / ((${dorf})3.0f) ;
+        }    
     }
 
 """)
@@ -295,6 +298,8 @@ class OpenclFibre(object):
                                          use_all, tau_1, tau_2, f_R)
         self.factor = None
         self.energy_list = []
+        self.max_power_list = []
+        self.peaks_list = []
 
     def __call__(self, domain, field):
         # Setup plan for calculating fast Fourier transforms:
@@ -411,17 +416,22 @@ class OpenclFibre(object):
         cl.enqueue_copy(self.queue, dst_buffer.data, src_buffer.data).wait()
 
     def compute_characts(self, field):
+        def get_peaks(P, prominence):
+            peaks, _ = find_peaks(P, height=0, prominence=prominence)
+            return peaks
+
+        # self.shape[0] must be even
         temporal_power = cl_array.zeros(self.queue, self.shape, self.np_float)
         self.prg.cl_temporal_power(self.queue, self.shape, None, field.data, temporal_power.data)
-        print(f"max temp power: {np.amax(temporal_power.get())}")
-        simpson_result = cl_array.zeros(self.queue, tuple([self.shape[0] - 2]), self.np_float)
-        h = cl_array.to_device(self.queue, self.domain.dt.astype(self.np_float))
-        size = cl_array.to_device(self.queue, np.array([self.shape[0]-2]).astype(self.np_float))
-        print(f"h current: {h.get()}")
+        max_power = np.amax(temporal_power.get())
+        simpson_result = cl_array.zeros(self.queue, self.shape, self.np_float)
+        h = cl_array.to_device(self.queue, (self.domain.dt*1e-3).astype(self.np_float))
         self.prg.cl_simpson(self.queue, tuple([self.shape[0] - 2]), None, temporal_power.data, simpson_result.data, h.data)
         energy = np.sum(simpson_result.get())
-        print(f"energy current: {energy}")
-        return energy
+
+        self.energy_list.append(energy)
+        self.max_power_list.append(max_power)
+        self.peaks_list.append(get_peaks(temporal_power.get(), max_power/10)) #cant be paralleled
 
     def cl_linear(self, field_buffer, stepsize, factor_buffer):
         """ Linear part of step. """
@@ -532,7 +542,7 @@ class OpenclFibre(object):
         self.cl_linear(field_temp, half_step, factor)
         self.cl_nonlinear(field, stepsize, field_temp)
         self.cl_linear(field, half_step, factor)
-        self.energy_list.append(self.compute_characts(field))
+        self.compute_characts(field)
     
     def cl_ss_sym_rk4(self, field, field_temp, field_linear, factor, stepsize):
         """ 
