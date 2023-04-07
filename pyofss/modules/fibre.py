@@ -71,7 +71,7 @@ class Fibre(object):
 
     def __init__(self, name="fibre", length=1.0, alpha=None,
                  beta=None, gamma=0.0, sim_type=None, traces=1,
-                 local_error=1.0e-6, method="RK4IP", total_steps=100,
+                 local_error=1.0e-6, method="ss_symmetric", total_steps=100,
                  self_steepening=False, raman_scattering=False,
                  rs_factor=0.003, use_all=False, centre_omega=None,
                  tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18, 

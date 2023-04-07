@@ -476,15 +476,17 @@ class OpenclFibre(object):
                 self.queue, self.linearity.cached_factor.astype(self.np_complex))
             self.cached_factor = True
 
-        self.plan.execute(field_buffer.data, inverse=True)
+        
         if self.amplifier is None:
+            self.plan.execute(field_buffer.data, inverse=True)
             self.prg.cl_linear_cached(self.queue, self.shape, None,
                                   field_buffer.data, self.buf_factor.data)
         else:
-            amp_factor = cl_array.to_device(self.amplifier.factor(field_buffer.data, self.stepsize))
+            total_factor = cl_array.to_device(self.queue, (np.multiply(np.exp(self.amplifier.factor(field_buffer.get(), stepsize)),self.buf_factor.get())).astype(self.np_complex))
+            self.plan.execute(field_buffer.data, inverse=True)
             self.prg.cl_linear_cached(self.queue, self.shape, None,
-                                  field_buffer.data, amp_factor.data*self.buf_factor.data)
-        self.plan.execute(field_buffer.data)
+                                  field_buffer.data, total_factor.data)
+        self.plan.execute(field_buffer.data) 
 
     def cl_n_default(self, field_buffer, stepsize):
         """ Nonlinear part of step. """
