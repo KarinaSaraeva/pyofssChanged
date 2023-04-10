@@ -23,7 +23,7 @@ import numpy as np
 import pyopencl as cl
 import pyopencl.array as cl_array
 import pandas as pd
-
+from pyofss.field import fft, ifft, fftshift
 import sys as sys0
 version_py = sys0.version_info[0]
 if version_py == 3:
@@ -185,6 +185,14 @@ OPENCL_OPERATIONS = Template("""
         temporal_power[gid] = c.real * c.real + c.imag * c.imag;
     }
 
+    __kernel void cl_physical_power(__global c${dorf}_t* field, const ${dorf} factor,
+                                __global ${dorf}* temporal_power) {
+        int gid = get_global_id(0);
+    
+        c${dorf}_t c = field[gid];
+        temporal_power[gid] = (c.real * c.real + c.imag * c.imag)*factor;
+    }
+    
     __kernel void cl_simpson(__global ${dorf}* temporal_power, __global ${dorf}* output, const ${dorf} h) {
         int gid = get_global_id(0);  
         if (!(gid % 2)) {
@@ -203,12 +211,24 @@ OPENCL_OPERATIONS = Template("""
         array[gid] = array[gid]*factor;
     }
 
+    __kernel void multiply_arr_by_factor_substract(__global ${dorf}* array1,
+                            const ${dorf} factor, __global ${dorf}* array2) {
+        int gid = get_global_id(0);
+        array1[gid] = array1[gid]*factor - array2[gid];
+    }
+
     __kernel void multiply_array_by_another(__global ${dorf}* array1,
                             __global ${dorf}* array2) {
         int gid = get_global_id(0);
         array1[gid] = array1[gid]*array2[gid];
     }
 
+    __kernel void multiply_array_by_another_complex(__global c${dorf}_t* array1,
+                            __global c${dorf}_t* array2) {
+        int gid = get_global_id(0);
+        array1[gid] = c${dorf}_mul(array1[gid],array2[gid]);
+    }
+    
     __kernel void devide_array_by_another(__global ${dorf}* array1,
                             __global ${dorf}* array2) {
         int gid = get_global_id(0);
@@ -230,6 +250,22 @@ OPENCL_OPERATIONS = Template("""
                             __global ${dorf}* array2) {
         int gid = get_global_id(0);
         array1[gid] = array1[gid] - array2[gid];
+    }
+
+    __kernel void raise_to_exponent_array_with_factor(__global ${dorf}* array1, const ${dorf} factor) {
+        int gid = get_global_id(0);
+        array1[gid] = exp(array1[gid]*factor);
+    }
+
+    __kernel void cl_fftshift(__global c${dorf}_t* input, const ${dorf} n) {
+        int half_n = (int)(n / 2);
+        int gid = get_global_id(0);
+        if (gid < half_n)
+        {
+            c${dorf}_t tmp = input[gid];
+            input[gid] = input[gid + half_n];
+            input[gid + half_n] = tmp;
+        }
     }
 
 """)
@@ -486,13 +522,16 @@ class OpenclFibre(object):
         temporal_power = cl_array.zeros(self.queue, self.shape, self.np_float)
         self.prg.cl_power(self.queue, self.shape, None, field.data, temporal_power.data)
         max_power = np.amax(temporal_power.get())
+
         simpson_result = cl_array.zeros(self.queue, self.shape, self.np_float)
         self.prg.cl_simpson(self.queue, tuple([self.shape[0] - 2]), None, temporal_power.data, simpson_result.data, self.np_float(self.domain.dt*1e-3))
         energy = np.sum(simpson_result.get())
+        simpson_result.data.release()
 
         self.energy_list.append(energy)
         self.max_power_list.append(max_power)
         self.peaks_list.append(get_peaks(temporal_power.get(), max_power/10)) #cant be paralleled
+        temporal_power.data.release()
 
     def cl_linear(self, field_buffer, stepsize, factor_buffer):
         """ Linear part of step. """
@@ -515,10 +554,21 @@ class OpenclFibre(object):
             self.prg.cl_linear_cached(self.queue, self.shape, None,
                                   field_buffer.data, self.buf_factor.data)
         else:
-            total_factor = cl_array.to_device(self.queue, (np.multiply(np.exp(self.amplifier.cl_factor(field_buffer, stepsize)), self.buf_factor.get())).astype(self.np_complex))
+            # factor =  cl_array.to_device(self.queue, self.amplifier.cl_exp_factor(field_buffer, stepsize).astype(self.np_float))
+            # #self.prg.cl_fftshift(self.queue, self.shape, None, factor.data, self.np_float(factor.shape[0]))
+            # self.prg.multiply_array_by_another(self.queue, self.shape, None, factor.data, self.buf_factor.data)
+
+
+            # factor = cl_array.to_device(self.queue, (np.multiply(self.amplifier.cl_exp_factor(field_buffer, stepsize), self.buf_factor.get())).astype(self.np_complex))
+
+            factor = cl_array.to_device(self.queue, (self.amplifier.cl_exp_factor(field_buffer, stepsize)).astype(self.np_complex))
+            self.prg.cl_fftshift(self.queue, self.shape, None, factor.data, self.np_float(factor.shape[0]))
+            self.prg.multiply_array_by_another_complex(self.queue, self.shape, None, factor.data, self.buf_factor.data)
+
             self.plan.execute(field_buffer.data, inverse=True)
             self.prg.cl_linear_cached(self.queue, self.shape, None,
-                                  field_buffer.data, total_factor.data)
+                                  field_buffer.data, factor.data)
+            factor.data.release()
         self.plan.execute(field_buffer.data) 
 
     def cl_n_default(self, field_buffer, stepsize):
