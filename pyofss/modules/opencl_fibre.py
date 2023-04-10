@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2013 David Bolt,
     2020-2021 Vladislav Efremov, Denis Kharenko
@@ -178,7 +177,7 @@ OPENCL_OPERATIONS = Template("""
             im_gamma, field[gid]);
     }
 
-    __kernel void cl_temporal_power(__global c${dorf}_t* field,
+    __kernel void cl_power(__global c${dorf}_t* field,
                                 __global ${dorf}* temporal_power) {
         int gid = get_global_id(0);
     
@@ -186,7 +185,7 @@ OPENCL_OPERATIONS = Template("""
         temporal_power[gid] = c.real * c.real + c.imag * c.imag;
     }
 
-    __kernel void cl_simpson(__global ${dorf}* temporal_power, __global ${dorf}* output, __global ${dorf}* h) {
+    __kernel void cl_simpson(__global ${dorf}* temporal_power, __global ${dorf}* output, const ${dorf} h) {
         int gid = get_global_id(0);  
         if (!(gid % 2)) {
             ${dorf} x0 = temporal_power[gid];
@@ -194,8 +193,43 @@ OPENCL_OPERATIONS = Template("""
             ${dorf} x2 = temporal_power[gid + 2];
             
             ${dorf} result = (x0 + (${dorf})4.0f * x1 + x2);
-            output[gid] = result * h[0] / ((${dorf})3.0f) ;
+            output[gid] = result * h / ((${dorf})3.0f) ;
         }    
+    }
+
+    __kernel void multiply_arr_by_factor(__global ${dorf}* array,
+                            const ${dorf} factor) {
+        int gid = get_global_id(0);
+        array[gid] = array[gid]*factor;
+    }
+
+    __kernel void multiply_array_by_another(__global ${dorf}* array1,
+                            __global ${dorf}* array2) {
+        int gid = get_global_id(0);
+        array1[gid] = array1[gid]*array2[gid];
+    }
+
+    __kernel void devide_array_by_another(__global ${dorf}* array1,
+                            __global ${dorf}* array2) {
+        int gid = get_global_id(0);
+        if (array2[gid] != 0) {
+            array1[gid] = array1[gid]/array2[gid];
+        } else {
+            array1[gid] = (${dorf})0.0f;
+        }
+        
+    }
+
+    __kernel void add_array(__global ${dorf}* array1,
+                            __global ${dorf}* array2) {
+        int gid = get_global_id(0);
+        array1[gid] = array1[gid] + array2[gid];
+    }
+
+    __kernel void subtract_array(__global ${dorf}* array1,
+                            __global ${dorf}* array2) {
+        int gid = get_global_id(0);
+        array1[gid] = array1[gid] - array2[gid];
     }
 
 """)
@@ -282,7 +316,7 @@ class OpenclFibre(object):
             self.cl_n = getattr(self, 'cl_n_default')
         
         if (use_Yb_model):
-            self.amplifier = Amplifier2LevelModel(Pp=Pp_0, N=N, Rr=Rr)
+            self.amplifier = Amplifier2LevelModel(Pp=Pp_0, N=N, Rr=Rr, prg=self.prg, queue=self.queue, dorf=dorf)
         else:
             if (small_signal_gain is not None) and (E_sat is not None):
                 self.amplifier = Amplifier(
@@ -450,11 +484,10 @@ class OpenclFibre(object):
 
         # self.shape[0] must be even
         temporal_power = cl_array.zeros(self.queue, self.shape, self.np_float)
-        self.prg.cl_temporal_power(self.queue, self.shape, None, field.data, temporal_power.data)
+        self.prg.cl_power(self.queue, self.shape, None, field.data, temporal_power.data)
         max_power = np.amax(temporal_power.get())
         simpson_result = cl_array.zeros(self.queue, self.shape, self.np_float)
-        h = cl_array.to_device(self.queue, (self.domain.dt*1e-3).astype(self.np_float))
-        self.prg.cl_simpson(self.queue, tuple([self.shape[0] - 2]), None, temporal_power.data, simpson_result.data, h.data)
+        self.prg.cl_simpson(self.queue, tuple([self.shape[0] - 2]), None, temporal_power.data, simpson_result.data, self.np_float(self.domain.dt*1e-3))
         energy = np.sum(simpson_result.get())
 
         self.energy_list.append(energy)
@@ -482,7 +515,7 @@ class OpenclFibre(object):
             self.prg.cl_linear_cached(self.queue, self.shape, None,
                                   field_buffer.data, self.buf_factor.data)
         else:
-            total_factor = cl_array.to_device(self.queue, (np.multiply(np.exp(self.amplifier.factor(field_buffer.get(), stepsize)),self.buf_factor.get())).astype(self.np_complex))
+            total_factor = cl_array.to_device(self.queue, (np.multiply(np.exp(self.amplifier.cl_factor(field_buffer, stepsize)), self.buf_factor.get())).astype(self.np_complex))
             self.plan.execute(field_buffer.data, inverse=True)
             self.prg.cl_linear_cached(self.queue, self.shape, None,
                                   field_buffer.data, total_factor.data)

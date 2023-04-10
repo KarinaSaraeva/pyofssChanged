@@ -17,7 +17,8 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
-
+import pyopencl as cl
+import pyopencl.array as cl_array
 from scipy import power, sqrt
 from pyofss.field import fft, ifft, fftshift, energy, spectral_power
 import numpy as np
@@ -118,7 +119,7 @@ class Amplifier(AmplifierBase):
 
 
 class Amplifier2LevelModel(AmplifierBase):
-    def __init__(self, name="amplifier2LevelModel", Pp=None, N=None, Rr=None):
+    def __init__(self, name="amplifier2LevelModel", Pp=None, N=None, Rr=None, prg=None, queue=None, dorf="double"):
         print(f"use two level Yb gain model")
         #constatnts 
         self.h_p = 6.62 * 1e-34
@@ -139,6 +140,15 @@ class Amplifier2LevelModel(AmplifierBase):
 
         self.sigma12_p = 2.5 * 1e-24 # units? m2
         self.sigma21_p = 2.44 * 1e-24
+
+        self.prg = prg
+        self.queue = queue
+        self.np_float = None
+        float_conversions = {"float": np.float32, "double": np.float64}
+        self.np_float = float_conversions[dorf]
+
+    def send_array_to_device(self, array):
+        return cl_array.to_device(self.queue, array.astype(self.np_float))
 
     def load_sigma_s(self):
         import os.path
@@ -163,6 +173,7 @@ class Amplifier2LevelModel(AmplifierBase):
     def set_domain(self, domain):
         self.domain = domain
         self.interpolate_sigma_s()
+        self.shape = self.domain.nu.shape
         # self.load_sigma_s()
 
     @property
@@ -191,6 +202,8 @@ class Amplifier2LevelModel(AmplifierBase):
             return self._Psat_s
         except:
             self._Psat_s = (self.h_p * self.domain.nu * 1e12) / (self.T * (self.sigma12_s + self.sigma21_s) * self.rho_s) 
+            if self.prg:
+                self._Psat_s = self.send_array_to_device(self._Psat_s)
             return self._Psat_s
 
     @property
@@ -207,6 +220,8 @@ class Amplifier2LevelModel(AmplifierBase):
             return self._eta_s
         except:
             self._eta_s = self.sigma12_s * self.rho_s * self.N
+            if self.prg:
+                self._eta_s = self.send_array_to_device(self._eta_s)
             return self._eta_s
 
     @property
@@ -251,6 +266,10 @@ class Amplifier2LevelModel(AmplifierBase):
             return self._ratio_s
         except:
             self._ratio_s = self.sigma12_s / (self.sigma12_s + self.sigma21_s)
+            if self.prg:
+                mask = np.isnan(self._ratio_s)
+                self._ratio_s[mask] = 0
+                self._ratio_s = self.send_array_to_device(self._ratio_s)
             return self._ratio_s
 
     def calculate_N2(self, Ps):
@@ -282,3 +301,36 @@ class Amplifier2LevelModel(AmplifierBase):
         self.gs_list.append(g_s)
         self.update_Pp(g_p, h)
         return fftshift(g_s * h * 1e3 / 2)
+    
+    def cl_copy(self, dst_buffer, src_buffer):
+        """ Copy contents of one buffer into another. """
+        cl.enqueue_copy(self.queue, dst_buffer.data, src_buffer.data).wait() #check how it works
+
+    def cl_calculate_g_s(self, N2):
+        temp_arr = cl_array.to_device(
+            self.queue, self.alpha_s.astype(self.np_float))
+        self.prg.multiply_arr_by_factor(self.queue, self.shape, None, temp_arr.data, N2)
+        self.prg.subtract_array(self.queue, self.shape, None, temp_arr.data, self.eta_s.data)
+        return temp_arr
+    
+    def cl_calculate_N2(self, Ps): # Ps already sent to device
+        temp_arr = cl_array.zeros(self.queue, Ps.shape, self.np_float)
+        self.cl_copy(temp_arr, Ps) # not to change Ps.. 
+        self.prg.devide_array_by_another(self.queue, self.shape, None, temp_arr.data, self.Psat_s.data) # some values can be None
+        denominator = 1 + self.Pp / self.Psat_p + np.sum(temp_arr.get())
+        self.prg.multiply_array_by_another(self.queue, self.shape, None, temp_arr.data, self.ratio_s.data)
+        numerator = self.ratio_p * self.Pp / self.Psat_p + np.sum(temp_arr.get())
+        N2 = (numerator/denominator) * self.N
+        self.inversion_factor_list.append(numerator/denominator)
+        return N2
+
+    def cl_factor(self, A, h): # A must be Fourie transormed and already sent to device
+        spectral_power = cl_array.zeros(self.queue, self.shape, self.np_float)
+        self.prg.cl_power(self.queue, self.shape, None, A.data, spectral_power.data)
+        self.prg.multiply_arr_by_factor(self.queue, self.shape, None, spectral_power.data, len(A)*self.domain.dt/(self.Tr))
+        N2 = self.cl_calculate_N2(spectral_power)
+        g_s = self.cl_calculate_g_s(N2)
+        g_p = self.calculate_g_p(N2)
+        self.gs_list.append(g_s.get())
+        self.update_Pp(g_p, h)
+        return fftshift(g_s.get() * h * 1e3 / 2) # accelerate ???
