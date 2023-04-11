@@ -146,10 +146,11 @@ class Amplifier2LevelModel(AmplifierBase):
         self.np_float = None
         float_conversions = {"float": np.float32, "double": np.float64}
         self.np_float = float_conversions[dorf]
+        self.physical_power_factor = None
 
 
     def prepare_arrays_on_device(self):
-        self.spectral_power = cl_array.zeros(self.queue, self.shape, self.np_float)   
+        self.spectral_power_buffer = cl_array.zeros(self.queue, self.shape, self.np_float)   
         self.g_s_buffer = cl_array.zeros(self.queue, self.shape, self.np_float)  
 
     def send_array_to_device(self, array):
@@ -179,6 +180,7 @@ class Amplifier2LevelModel(AmplifierBase):
         self.domain = domain
         self.interpolate_sigma_s()
         self.shape = self.domain.nu.shape
+        self.physical_power_factor = self.np_float(self.shape[0]*self.domain.dt/(self.Tr))
         if self.prg:
             self.prepare_arrays_on_device()
 
@@ -315,23 +317,25 @@ class Amplifier2LevelModel(AmplifierBase):
     def cl_calculate_g_s(self, N2):
         self.cl_copy(self.g_s_buffer, self.alpha_s) # g_s_buffer is reset 
         self.prg.multiply_arr_by_factor_substract(self.queue, self.shape, None, self.g_s_buffer.data, N2, self.eta_s.data)
-        return self.g_s_buffer
     
-    def cl_calculate_N2(self, temp_arr): # Ps already sent to device
-        self.prg.devide_array_by_another(self.queue, self.shape, None, temp_arr.data, self.Psat_s.data) # some values can be None
-        denominator = 1 + self.Pp / self.Psat_p + np.sum(temp_arr.get())
-        self.prg.multiply_array_by_another(self.queue, self.shape, None, temp_arr.data, self.ratio_s.data)
-        numerator = self.ratio_p * self.Pp / self.Psat_p + np.sum(temp_arr.get())
-        N2 = (numerator/denominator) * self.N
-        self.inversion_factor_list.append(numerator/denominator)
+    def cl_calculate_g_s_exponent(self, N2, h):
+        self.cl_copy(self.g_s_buffer, self.alpha_s) # g_s_buffer is reset 
+        self.prg.cl_calculate_g_s_exponent(self.queue, self.shape, None, self.g_s_buffer.data, self.eta_s.data, self.np_float(N2), self.np_float(h * 1e3 / 2)) # cant increase number of args
+    
+    def cl_calculate_N2(self, temp_arr_s): # Ps already sent to device
+        self.prg.devide_array_by_another(self.queue, self.shape, None, temp_arr_s.data, self.Psat_s.data) # some values can be None
+        temp_p = self.Pp / self.Psat_p
+        denominator = 1 + temp_p + np.sum(temp_arr_s.get())
+        self.prg.multiply_array_by_another(self.queue, self.shape, None, temp_arr_s.data, self.ratio_s.data)
+        numerator = self.ratio_p * temp_p + np.sum(temp_arr_s.get())
+        inversion_factor = numerator/denominator
+        N2 = inversion_factor * self.N
+        self.inversion_factor_list.append(inversion_factor)
         return N2
 
     def cl_exp_factor(self, A, h): # A must be Fourie transormed and already sent to device
-        self.prg.cl_physical_power(self.queue, self.shape, None, A.data, self.np_float(len(A)*self.domain.dt/(self.Tr)), self.spectral_power.data)
-        N2 = self.cl_calculate_N2(self.spectral_power)
-        self.cl_calculate_g_s(N2) # stored in self.g_s_buffer
+        self.prg.cl_physical_power(self.queue, self.shape, None, A.data, self.physical_power_factor, self.spectral_power_buffer.data)
+        N2 = self.cl_calculate_N2(self.spectral_power_buffer)
+        self.cl_calculate_g_s_exponent(N2, h) # stored in self.g_s_buffer
         g_p = self.calculate_g_p(N2)
-        
-        # self.gs_list.append(g_s)
         self.update_Pp(g_p, h)
-        self.prg.raise_to_exponent_array_with_factor(self.queue, self.shape, None, self.g_s_buffer.data, self.np_float(h * 1e3 / 2))

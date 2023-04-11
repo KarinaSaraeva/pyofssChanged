@@ -211,6 +211,11 @@ OPENCL_OPERATIONS = Template("""
         array[gid] = array[gid]*factor;
     }
 
+    __kernel void cl_calculate_g_s_exponent(__global ${dorf}* g_s, __global ${dorf}* eta_s, const ${dorf} N2, const ${dorf} h) {
+        int gid = get_global_id(0);
+        g_s[gid] = exp((g_s[gid] * N2 - eta_s[gid])*h);
+    }
+
     __kernel void multiply_arr_by_factor_substract(__global ${dorf}* array1,
                             const ${dorf} factor, __global ${dorf}* array2) {
         int gid = get_global_id(0);
@@ -223,10 +228,10 @@ OPENCL_OPERATIONS = Template("""
         array1[gid] = array1[gid]*array2[gid];
     }
 
-    __kernel void multiply_array_by_another_complex(__global c${dorf}_t* array1,
-                            __global c${dorf}_t* array2) {
+    __kernel void multiply_complex_array_by_double_array(__global c${dorf}_t* array1, __global ${dorf}* array2) {
         int gid = get_global_id(0);
-        array1[gid] = c${dorf}_mul(array1[gid],array2[gid]);
+        array1[gid].real = array1[gid].real*array2[gid];
+        array1[gid].imag = array1[gid].imag*array2[gid];
     }
     
     __kernel void devide_array_by_another(__global ${dorf}* array1,
@@ -236,8 +241,7 @@ OPENCL_OPERATIONS = Template("""
             array1[gid] = array1[gid]/array2[gid];
         } else {
             array1[gid] = (${dorf})0.0f;
-        }
-        
+        } 
     }
 
     __kernel void add_array(__global ${dorf}* array1,
@@ -257,12 +261,12 @@ OPENCL_OPERATIONS = Template("""
         array1[gid] = exp(array1[gid]*factor);
     }
 
-    __kernel void cl_fftshift(__global c${dorf}_t* input, const ${dorf} n) {
+    __kernel void cl_fftshift(__global ${dorf}* input, const ${dorf} n) {
         int half_n = (int)(n / 2);
         int gid = get_global_id(0);
         if (gid < half_n)
         {
-            c${dorf}_t tmp = input[gid];
+            ${dorf} tmp = input[gid];
             input[gid] = input[gid + half_n];
             input[gid + half_n] = tmp;
         }
@@ -372,6 +376,10 @@ class OpenclFibre(object):
         self.energy_list = []
         self.max_power_list = []
         self.peaks_list = []
+
+        self.temporal_power = None
+        self.simpson_result = None
+        self.factor_buffer = None
 
     def __call__(self, domain, field):
         # Setup plan for calculating fast Fourier transforms:
@@ -493,6 +501,13 @@ class OpenclFibre(object):
         if self.buf_interaction is None:
             self.buf_interaction = cl_array.empty_like(self.buf_field)
 
+        if self.temporal_power is None:
+            self.temporal_power = cl_array.zeros(self.queue, self.shape, self.np_float)
+        if self.simpson_result is None:
+            self.simpson_result = cl_array.zeros(self.queue, self.shape, self.np_float)
+        if self.factor_buffer is None:
+            self.factor_buffer = cl_array.zeros(self.queue, self.shape, self.np_complex)
+
         if self.use_all:
             if self.buf_h_R is None:
                 self.buf_h_R = cl_array.to_device(
@@ -519,19 +534,15 @@ class OpenclFibre(object):
             return peaks
 
         # self.shape[0] must be even
-        temporal_power = cl_array.zeros(self.queue, self.shape, self.np_float)
-        self.prg.cl_power(self.queue, self.shape, None, field.data, temporal_power.data)
-        max_power = np.amax(temporal_power.get())
+        self.prg.cl_power(self.queue, self.shape, None, field.data, self.temporal_power.data)
+        max_power = np.amax(self.temporal_power.get())
 
-        simpson_result = cl_array.zeros(self.queue, self.shape, self.np_float)
-        self.prg.cl_simpson(self.queue, tuple([self.shape[0] - 2]), None, temporal_power.data, simpson_result.data, self.np_float(self.domain.dt*1e-3))
-        energy = np.sum(simpson_result.get())
-        simpson_result.data.release()
+        self.prg.cl_simpson(self.queue, tuple([self.shape[0] - 2]), None, self.temporal_power.data, self.simpson_result.data, self.np_float(self.domain.dt*1e-3))
+        energy = np.sum(self.simpson_result.get())
 
         self.energy_list.append(energy)
         self.max_power_list.append(max_power)
-        self.peaks_list.append(get_peaks(temporal_power.get(), max_power/10)) #cant be paralleled
-        temporal_power.data.release()
+        self.peaks_list.append(get_peaks(self.temporal_power.get(), max_power/10)) #cant be paralleled
 
     def cl_linear(self, field_buffer, stepsize, factor_buffer):
         """ Linear part of step. """
@@ -554,13 +565,13 @@ class OpenclFibre(object):
                                   field_buffer.data, self.buf_factor.data)
         else:
             self.amplifier.cl_exp_factor(field_buffer, stepsize)
-            factor = self.amplifier.g_s_buffer # current gs recalculated for field_buffer and stepsize
-            self.prg.cl_fftshift(self.queue, self.shape, None, factor.data, self.np_float(factor.shape[0]))
-            self.prg.multiply_array_by_another_complex(self.queue, self.shape, None, factor.data, self.buf_factor.data)
+            self.prg.cl_fftshift(self.queue, self.shape, None, self.amplifier.g_s_buffer.data, self.np_float(self.amplifier.g_s_buffer.shape[0]))
+            self.cl_copy(self.factor_buffer, self.buf_factor)
+            self.prg.multiply_complex_array_by_double_array(self.queue, self.shape, None, self.factor_buffer.data, self.amplifier.g_s_buffer.data)
 
             self.plan.execute(field_buffer.data, inverse=True)
             self.prg.cl_linear_cached(self.queue, self.shape, None,
-                                  field_buffer.data, factor.data)
+                                  field_buffer.data, self.factor_buffer.data)
 
         self.plan.execute(field_buffer.data) 
 
