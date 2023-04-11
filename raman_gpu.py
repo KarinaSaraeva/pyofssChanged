@@ -8,11 +8,28 @@ import pylab as plt
 
 import time
 
-domain = Domain(bit_width=200.0, samples_per_bit=2048*16)
-gaussian = Gaussian(peak_power=1.0, width=1.0)
+lamb0 = 1028
+peak_power = 1e-30  
+peak_width = 2    
+peak_C = 0.
+total_steps = 2000
+betta_2 = 20  
+gamma_active = 5  
+La_1 = 0.5*1e-3
 
-fib = Fibre(length=5.0, method='rk4ip', total_steps=200, traces=200, 
-            beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0, self_steepening=False, use_all=True)
+Pp_0 = 10               # Ws
+N = 4.8
+Rr = 80*1e-6            # THz
+Tr = 1/Rr    
+
+domain = Domain(samples_per_bit=2**14, bit_width=200.0,
+                total_bits=1, centre_nu=lambda_to_nu(lamb0))
+gaussian = Gaussian(name="initial_pulse", peak_power=peak_power,
+                    width=peak_width, C=peak_C, using_fwhm=True)
+
+fib = Fibre(length=La_1, total_steps=total_steps, traces=total_steps, 
+            beta=[0.0, 0.0, betta_2], gamma=gamma_active, self_steepening=False, use_all=True,
+            use_Yb_model=True, N=N, Pp_0=Pp_0, Rr=Rr)
 
 sys = System(domain)
 sys.add(gaussian)
@@ -25,14 +42,11 @@ NO_CL_OUT = sys.field
 
 print("Run time without cl is {}".format(stop-start))
 
-#single_plot(sys.domain.t, temporal_power(sys.field), labels["t"], labels["P_t"],
-#            x_range=(-20.0, 40.0), use_fill=False)
-#plt.savefig('raman_without_cl')
-
 sys1 = System(domain)
 sys1.add(gaussian)
-sys1.add(OpenclFibre(length=5.0, total_steps=200,
-            beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0, self_steepening=False, use_all=True,
+sys1.add(OpenclFibre(length=La_1, total_steps=total_steps,
+            beta=[0.0, 0.0, betta_2], gamma=gamma_active, self_steepening=False, use_all=True,
+            use_Yb_model=True, N=N, Pp_0=Pp_0, Rr=Rr,
             dorf='double'))
 start = time.time()
 sys1.run()
@@ -45,10 +59,10 @@ multi_plot(sys1.domain.t, [temporal_power(sys.field), temporal_power(sys1.field)
             x_range=(-20.0, 40.0), use_fill=False)
 plt.savefig('raman_cl_compare')
 
-
-df_results = sys.get_laser_info()
+df_results = sys.df_results  
+df_results1 = sys1.df_results
 energy_arr = df_results['energy'].values
-energy_arr1 = np.array(sys1.modules[1].energy_list)
+energy_arr1 = df_results1['energy'].values
 multi_plot(df_results.index.get_level_values("z [mm]").values, [energy_arr, energy_arr1], ["cpu", "gpu"], labels["z"], "E_t", use_fill=False)
 plt.savefig('raman_cl_compare_energy')
 

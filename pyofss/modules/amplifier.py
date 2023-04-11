@@ -150,7 +150,7 @@ class Amplifier2LevelModel(AmplifierBase):
 
     def prepare_arrays_on_device(self):
         self.spectral_power = cl_array.zeros(self.queue, self.shape, self.np_float)   
-        self.g_s = cl_array.zeros(self.queue, self.shape, self.np_float)  
+        self.g_s_buffer = cl_array.zeros(self.queue, self.shape, self.np_float)  
 
     def send_array_to_device(self, array):
         return cl_array.to_device(self.queue, array.astype(self.np_float))
@@ -313,10 +313,9 @@ class Amplifier2LevelModel(AmplifierBase):
         cl.enqueue_copy(self.queue, dst_buffer.data, src_buffer.data).wait() #check how it works
 
     def cl_calculate_g_s(self, N2):
-        temp_arr = cl_array.to_device(
-            self.queue, self.alpha_s.astype(self.np_float))
-        self.prg.multiply_arr_by_factor_substract(self.queue, self.shape, None, temp_arr.data, N2, self.eta_s.data)
-        return temp_arr
+        self.cl_copy(self.g_s_buffer, self.alpha_s) # g_s_buffer is reset 
+        self.prg.multiply_arr_by_factor_substract(self.queue, self.shape, None, self.g_s_buffer.data, N2, self.eta_s.data)
+        return self.g_s_buffer
     
     def cl_calculate_N2(self, temp_arr): # Ps already sent to device
         self.prg.devide_array_by_another(self.queue, self.shape, None, temp_arr.data, self.Psat_s.data) # some values can be None
@@ -330,13 +329,9 @@ class Amplifier2LevelModel(AmplifierBase):
     def cl_exp_factor(self, A, h): # A must be Fourie transormed and already sent to device
         self.prg.cl_physical_power(self.queue, self.shape, None, A.data, self.np_float(len(A)*self.domain.dt/(self.Tr)), self.spectral_power.data)
         N2 = self.cl_calculate_N2(self.spectral_power)
-        g_s = self.cl_calculate_g_s(N2)
+        self.cl_calculate_g_s(N2) # stored in self.g_s_buffer
         g_p = self.calculate_g_p(N2)
         
         # self.gs_list.append(g_s)
         self.update_Pp(g_p, h)
-        self.prg.raise_to_exponent_array_with_factor(self.queue, self.shape, None, g_s.data, self.np_float(h * 1e3 / 2))
-        result = g_s.get()
-
-        g_s.data.release() #buffer
-        return  result
+        self.prg.raise_to_exponent_array_with_factor(self.queue, self.shape, None, self.g_s_buffer.data, self.np_float(h * 1e3 / 2))

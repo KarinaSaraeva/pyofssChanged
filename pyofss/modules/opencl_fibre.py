@@ -547,28 +547,21 @@ class OpenclFibre(object):
             self.buf_factor = cl_array.to_device(
                 self.queue, self.linearity.cached_factor.astype(self.np_complex))
             self.cached_factor = True
-
         
         if self.amplifier is None:
             self.plan.execute(field_buffer.data, inverse=True)
             self.prg.cl_linear_cached(self.queue, self.shape, None,
                                   field_buffer.data, self.buf_factor.data)
         else:
-            # factor =  cl_array.to_device(self.queue, self.amplifier.cl_exp_factor(field_buffer, stepsize).astype(self.np_float))
-            # #self.prg.cl_fftshift(self.queue, self.shape, None, factor.data, self.np_float(factor.shape[0]))
-            # self.prg.multiply_array_by_another(self.queue, self.shape, None, factor.data, self.buf_factor.data)
-
-
-            # factor = cl_array.to_device(self.queue, (np.multiply(self.amplifier.cl_exp_factor(field_buffer, stepsize), self.buf_factor.get())).astype(self.np_complex))
-
-            factor = cl_array.to_device(self.queue, (self.amplifier.cl_exp_factor(field_buffer, stepsize)).astype(self.np_complex))
+            self.amplifier.cl_exp_factor(field_buffer, stepsize)
+            factor = self.amplifier.g_s_buffer # current gs recalculated for field_buffer and stepsize
             self.prg.cl_fftshift(self.queue, self.shape, None, factor.data, self.np_float(factor.shape[0]))
             self.prg.multiply_array_by_another_complex(self.queue, self.shape, None, factor.data, self.buf_factor.data)
 
             self.plan.execute(field_buffer.data, inverse=True)
             self.prg.cl_linear_cached(self.queue, self.shape, None,
                                   field_buffer.data, factor.data)
-            factor.data.release()
+
         self.plan.execute(field_buffer.data) 
 
     def cl_n_default(self, field_buffer, stepsize):
