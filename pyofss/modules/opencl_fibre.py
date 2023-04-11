@@ -237,11 +237,7 @@ OPENCL_OPERATIONS = Template("""
     __kernel void devide_array_by_another(__global ${dorf}* array1,
                             __global ${dorf}* array2) {
         int gid = get_global_id(0);
-        if (array2[gid] != 0) {
-            array1[gid] = array1[gid]/array2[gid];
-        } else {
-            array1[gid] = (${dorf})0.0f;
-        } 
+        array1[gid] = array1[gid]/array2[gid]; 
     }
 
     __kernel void add_array(__global ${dorf}* array1,
@@ -564,12 +560,11 @@ class OpenclFibre(object):
             self.prg.cl_linear_cached(self.queue, self.shape, None,
                                   field_buffer.data, self.buf_factor.data)
         else:
+            self.plan.execute(field_buffer.data, inverse=True)
             self.amplifier.cl_exp_factor(field_buffer, stepsize)
             self.prg.cl_fftshift(self.queue, self.shape, None, self.amplifier.g_s_buffer.data, self.np_float(self.amplifier.g_s_buffer.shape[0]))
             self.cl_copy(self.factor_buffer, self.buf_factor)
             self.prg.multiply_complex_array_by_double_array(self.queue, self.shape, None, self.factor_buffer.data, self.amplifier.g_s_buffer.data)
-
-            self.plan.execute(field_buffer.data, inverse=True)
             self.prg.cl_linear_cached(self.queue, self.shape, None,
                                   field_buffer.data, self.factor_buffer.data)
 

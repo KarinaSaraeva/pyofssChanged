@@ -306,7 +306,7 @@ class Amplifier2LevelModel(AmplifierBase):
         N2 = self.calculate_N2(spectral_power(A)*len(A)*self.domain.dt/(self.Tr))
         g_s = self.calculate_g_s(N2)
         g_p = self.calculate_g_p(N2)
-        self.gs_list.append(g_s)
+        self.gs_list.append(np.exp(g_s * h * 1e3 / 2))
         self.update_Pp(g_p, h)
         return fftshift(g_s * h * 1e3 / 2)
     
@@ -335,7 +335,9 @@ class Amplifier2LevelModel(AmplifierBase):
 
     def cl_exp_factor(self, A, h): # A must be Fourie transormed and already sent to device
         self.prg.cl_physical_power(self.queue, self.shape, None, A.data, self.physical_power_factor, self.spectral_power_buffer.data)
+        self.prg.cl_fftshift(self.queue, self.shape, None, self.spectral_power_buffer.data, self.np_float(self.shape[0]))
         N2 = self.cl_calculate_N2(self.spectral_power_buffer)
         self.cl_calculate_g_s_exponent(N2, h) # stored in self.g_s_buffer
         g_p = self.calculate_g_p(N2)
+        self.gs_list.append(self.g_s_buffer.get())
         self.update_Pp(g_p, h)
