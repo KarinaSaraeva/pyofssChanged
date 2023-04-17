@@ -119,7 +119,7 @@ class Amplifier(AmplifierBase):
 
 
 class Amplifier2LevelModel(AmplifierBase):
-    def __init__(self, name="amplifier2LevelModel", Pp=None, N=None, Rr=None, prg=None, queue=None, dorf="double"):
+    def __init__(self, name="amplifier2LevelModel", Pp=None, N=None, Rr=None, prg=None, queue=None, ctx=None, dorf="double"):
         print(f"use two level Yb gain model")
         #constatnts 
         self.h_p = 6.62 * 1e-34
@@ -143,6 +143,7 @@ class Amplifier2LevelModel(AmplifierBase):
 
         self.prg = prg
         self.queue = queue
+        self.ctx = ctx
         self.np_float = None
         float_conversions = {"float": np.float32, "double": np.float64}
         self.np_float = float_conversions[dorf]
@@ -153,8 +154,10 @@ class Amplifier2LevelModel(AmplifierBase):
         self.spectral_power_buffer = cl_array.zeros(self.queue, self.shape, self.np_float)   
         self.g_s_buffer = cl_array.zeros(self.queue, self.shape, self.np_float)  
 
-    def send_array_to_device(self, array):
-        return cl_array.to_device(self.queue, array.astype(self.np_float))
+        # use constant memory for constant
+
+    def send_array_to_device_const(self, array):
+        return cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=array.astype(self.np_float))
 
     def load_sigma_s(self):
         import os.path
@@ -183,6 +186,7 @@ class Amplifier2LevelModel(AmplifierBase):
         self.physical_power_factor = self.np_float(self.shape[0]*self.domain.dt/(self.Tr))
         if self.prg:
             self.prepare_arrays_on_device()
+            self.physical_power_factor = self.send_array_to_device_const(self.physical_power_factor)
 
     @property
     def rho_s(self):
@@ -211,7 +215,7 @@ class Amplifier2LevelModel(AmplifierBase):
         except:
             self._Psat_s = (self.h_p * self.domain.nu * 1e12) / (self.T * (self.sigma12_s + self.sigma21_s) * self.rho_s) 
             if self.prg:
-                self._Psat_s = self.send_array_to_device(self._Psat_s)
+                self._Psat_s = self.send_array_to_device_const(self._Psat_s)
             return self._Psat_s
 
     @property
@@ -229,7 +233,7 @@ class Amplifier2LevelModel(AmplifierBase):
         except:
             self._eta_s = self.sigma12_s * self.rho_s * self.N
             if self.prg:
-                self._eta_s = self.send_array_to_device(self._eta_s)
+                self._eta_s = self.send_array_to_device_const(self._eta_s)
             return self._eta_s
 
     @property
@@ -277,7 +281,7 @@ class Amplifier2LevelModel(AmplifierBase):
             if self.prg:
                 mask = np.isnan(self._ratio_s)
                 self._ratio_s[mask] = 0
-                self._ratio_s = self.send_array_to_device(self._ratio_s)
+                self._ratio_s = self.send_array_to_device_const(self._ratio_s)
             return self._ratio_s
 
     def calculate_N2(self, Ps):
@@ -316,17 +320,17 @@ class Amplifier2LevelModel(AmplifierBase):
 
     def cl_calculate_g_s(self, N2):
         self.cl_copy(self.g_s_buffer, self.alpha_s) # g_s_buffer is reset 
-        self.prg.multiply_arr_by_factor_substract(self.queue, self.shape, None, self.g_s_buffer.data, N2, self.eta_s.data)
+        self.prg.multiply_arr_by_factor_substract(self.queue, self.shape, None, self.g_s_buffer.data, N2, self.eta_s)
     
     def cl_calculate_g_s_exponent(self, N2, h):
         self.cl_copy(self.g_s_buffer, self.alpha_s) # g_s_buffer is reset 
-        self.prg.cl_calculate_g_s_exponent(self.queue, self.shape, None, self.g_s_buffer.data, self.eta_s.data, self.np_float(N2), self.np_float(h * 1e3 / 2)) # cant increase number of args
+        self.prg.cl_calculate_g_s_exponent_const(self.queue, self.shape, None, self.g_s_buffer.data, self.eta_s, self.np_float(N2), self.np_float(h * 1e3 / 2)) # cant increase number of args
     
     def cl_calculate_N2(self, temp_arr_s): # Ps already sent to device
-        self.prg.devide_array_by_another(self.queue, self.shape, None, temp_arr_s.data, self.Psat_s.data) # some values can be None
+        self.prg.devide_array_by_another_const(self.queue, self.shape, None, temp_arr_s.data, self.Psat_s) # some values can be None
         temp_p = self.Pp / self.Psat_p
         denominator = 1 + temp_p + np.sum(temp_arr_s.get())
-        self.prg.multiply_array_by_another(self.queue, self.shape, None, temp_arr_s.data, self.ratio_s.data)
+        self.prg.multiply_array_by_another_const(self.queue, self.shape, None, temp_arr_s.data, self.ratio_s)
         numerator = self.ratio_p * temp_p + np.sum(temp_arr_s.get())
         inversion_factor = numerator/denominator
         N2 = inversion_factor * self.N
@@ -341,3 +345,22 @@ class Amplifier2LevelModel(AmplifierBase):
         g_p = self.calculate_g_p(N2)
         self.gs_list.append(self.g_s_buffer.get())
         self.update_Pp(g_p, h)
+
+    def cl_clear(self, cl_arr):
+        if cl_arr is not None:
+            if cl_arr.size > 0:
+                cl_arr.data.release() 
+
+    def cl_clear_const(self, cl_arr):
+        if cl_arr is not None:
+            if cl_arr.size > 0:
+                cl_arr.release() 
+
+    def clear_arrays_on_device(self):
+        if self.prg:
+            self.cl_clear(self.spectral_power_buffer)
+            self.cl_clear(self.g_s_buffer)
+
+            self.cl_clear_const(self.Psat_s)
+            self.cl_clear_const(self.eta_s)
+            self.cl_clear_const(self.ratio_s)

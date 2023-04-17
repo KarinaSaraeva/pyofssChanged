@@ -22,6 +22,7 @@
 import numpy as np
 import pyopencl as cl
 import pyopencl.array as cl_array
+import gc
 import pandas as pd
 from pyofss.field import fft, ifft, fftshift
 import sys as sys0
@@ -56,6 +57,7 @@ OPENCL_OPERATIONS = Template("""
     #endif
 
     #include <pyopencl-complex.h>
+
 
     __kernel void cl_cache(__global c${dorf}_t* factor,
                            const ${dorf} stepsize) {
@@ -185,12 +187,12 @@ OPENCL_OPERATIONS = Template("""
         temporal_power[gid] = c.real * c.real + c.imag * c.imag;
     }
 
-    __kernel void cl_physical_power(__global c${dorf}_t* field, const ${dorf} factor,
+    __kernel void cl_physical_power(__global c${dorf}_t* field, __global const ${dorf}* factor,
                                 __global ${dorf}* temporal_power) {
         int gid = get_global_id(0);
     
         c${dorf}_t c = field[gid];
-        temporal_power[gid] = (c.real * c.real + c.imag * c.imag)*factor;
+        temporal_power[gid] = (c.real * c.real + c.imag * c.imag)*factor[0];
     }
     
     __kernel void cl_simpson(__global ${dorf}* temporal_power, __global ${dorf}* output, const ${dorf} h) {
@@ -211,7 +213,7 @@ OPENCL_OPERATIONS = Template("""
         array[gid] = array[gid]*factor;
     }
 
-    __kernel void cl_calculate_g_s_exponent(__global ${dorf}* g_s, __global ${dorf}* eta_s, const ${dorf} N2, const ${dorf} h) {
+    __kernel void cl_calculate_g_s_exponent_const(__global ${dorf}* g_s, __global const ${dorf}* eta_s, const ${dorf} N2, const ${dorf} h) {
         int gid = get_global_id(0);
         g_s[gid] = exp((g_s[gid] * N2 - eta_s[gid])*h);
     }
@@ -222,8 +224,8 @@ OPENCL_OPERATIONS = Template("""
         array1[gid] = array1[gid]*factor - array2[gid];
     }
 
-    __kernel void multiply_array_by_another(__global ${dorf}* array1,
-                            __global ${dorf}* array2) {
+    __kernel void multiply_array_by_another_const(__global ${dorf}* array1,
+                            __global const ${dorf}* array2) {
         int gid = get_global_id(0);
         array1[gid] = array1[gid]*array2[gid];
     }
@@ -234,8 +236,7 @@ OPENCL_OPERATIONS = Template("""
         array1[gid].imag = array1[gid].imag*array2[gid];
     }
     
-    __kernel void devide_array_by_another(__global ${dorf}* array1,
-                            __global ${dorf}* array2) {
+    __kernel void devide_array_by_another_const(__global ${dorf}* array1, __global const ${dorf}* array2) {
         int gid = get_global_id(0);
         array1[gid] = array1[gid]/array2[gid]; 
     }
@@ -352,7 +353,7 @@ class OpenclFibre(object):
             self.cl_n = getattr(self, 'cl_n_default')
         
         if (use_Yb_model):
-            self.amplifier = Amplifier2LevelModel(Pp=Pp_0, N=N, Rr=Rr, prg=self.prg, queue=self.queue, dorf=dorf)
+            self.amplifier = Amplifier2LevelModel(Pp=Pp_0, N=N, Rr=Rr, prg=self.prg, queue=self.queue, ctx=self.ctx, dorf=dorf)
         else:
             if (small_signal_gain is not None) and (E_sat is not None):
                 self.amplifier = Amplifier(
@@ -407,8 +408,11 @@ class OpenclFibre(object):
         for z in self.zs[:-1]:
             self.method(self.buf_field, self.buf_temp,
                           self.buf_interaction, self.buf_factor, self.stepsize)
-
+            
+        # gpu memory should be cleared here manualy all neede info is already loaded
+        self.clear_arrays_on_device()
         return self.buf_field.get()
+    
 
     #for usual fibre this info is in storage
     def get_df_result(
@@ -519,7 +523,32 @@ class OpenclFibre(object):
         if self.cached_factor is False:
             self.buf_factor = cl_array.to_device(
                 self.queue, factor.astype(self.np_complex))
+            
+    def cl_clear(self, cl_arr):
+        if cl_arr is not None:
+            if cl_arr.size > 0:
+                cl_arr.data.release()      
 
+    def clear_arrays_on_device(self): 
+        mem_info = self.ctx.get_info(cl.context_info.DEVICES)[0].get_info(cl.device_info.GLOBAL_MEM_SIZE)
+        print("Global memory size:", mem_info)
+
+        self.cl_clear(self.buf_temp)
+        self.cl_clear(self.buf_interaction)
+        self.cl_clear(self.temporal_power)
+        self.cl_clear(self.simpson_result)
+        self.cl_clear(self.factor_buffer)
+        self.cl_clear(self.buf_h_R)
+        self.cl_clear(self.buf_nn_factor)
+        self.cl_clear(self.buf_mod)
+        self.cl_clear(self.buf_conv)
+        self.cl_clear(self.buf_factor)
+        self.amplifier.clear_arrays_on_device()    
+        mem_info = self.ctx.get_info(cl.context_info.DEVICES)[0].get_info(cl.device_info.GLOBAL_MEM_SIZE)
+        gc.collect()
+        print("Global memory size:", mem_info)
+    
+        
     def cl_copy(self, dst_buffer, src_buffer):
         """ Copy contents of one buffer into another. """
         cl.enqueue_copy(self.queue, dst_buffer.data, src_buffer.data).wait()
