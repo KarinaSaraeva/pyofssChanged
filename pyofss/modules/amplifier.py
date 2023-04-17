@@ -154,7 +154,7 @@ class Amplifier2LevelModel(AmplifierBase):
         self.spectral_power_buffer = cl_array.zeros(self.queue, self.shape, self.np_float)   
         self.g_s_buffer = cl_array.zeros(self.queue, self.shape, self.np_float)  
 
-        # use constant memory for constant
+        # use read-only memory for constant to be cashed on devise
 
     def send_array_to_device_const(self, array):
         return cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=array.astype(self.np_float))
@@ -250,6 +250,8 @@ class Amplifier2LevelModel(AmplifierBase):
             return self._alpha_s
         except:
             self._alpha_s = (self.sigma12_s + self.sigma21_s) * self.rho_s
+            if self.prg:
+                self._alpha_s = self.send_array_to_device_const(self._alpha_s)
             return self._alpha_s
         
     @property
@@ -317,14 +319,9 @@ class Amplifier2LevelModel(AmplifierBase):
     def cl_copy(self, dst_buffer, src_buffer):
         """ Copy contents of one buffer into another. """
         cl.enqueue_copy(self.queue, dst_buffer.data, src_buffer.data).wait() #check how it works
-
-    def cl_calculate_g_s(self, N2):
-        self.cl_copy(self.g_s_buffer, self.alpha_s) # g_s_buffer is reset 
-        self.prg.multiply_arr_by_factor_substract(self.queue, self.shape, None, self.g_s_buffer.data, N2, self.eta_s)
     
     def cl_calculate_g_s_exponent(self, N2, h):
-        self.cl_copy(self.g_s_buffer, self.alpha_s) # g_s_buffer is reset 
-        self.prg.cl_calculate_g_s_exponent_const(self.queue, self.shape, None, self.g_s_buffer.data, self.eta_s, self.np_float(N2), self.np_float(h * 1e3 / 2)) # cant increase number of args
+        self.prg.cl_calculate_g_s_exponent_const(self.queue, self.shape, None, self.g_s_buffer.data, self.alpha_s, self.eta_s, self.np_float(N2), self.np_float(h * 1e3 / 2)) # cant increase number of args
     
     def cl_calculate_N2(self, temp_arr_s): # Ps already sent to device
         self.prg.devide_array_by_another_const(self.queue, self.shape, None, temp_arr_s.data, self.Psat_s) # some values can be None
@@ -343,7 +340,7 @@ class Amplifier2LevelModel(AmplifierBase):
         N2 = self.cl_calculate_N2(self.spectral_power_buffer)
         self.cl_calculate_g_s_exponent(N2, h) # stored in self.g_s_buffer
         g_p = self.calculate_g_p(N2)
-        self.gs_list.append(self.g_s_buffer.get())
+        ##self.gs_list.append(self.g_s_buffer.get())
         self.update_Pp(g_p, h)
 
     def cl_clear(self, cl_arr):
@@ -364,3 +361,4 @@ class Amplifier2LevelModel(AmplifierBase):
             self.cl_clear_const(self.Psat_s)
             self.cl_clear_const(self.eta_s)
             self.cl_clear_const(self.ratio_s)
+            self.cl_clear_const(self.alpha_s)

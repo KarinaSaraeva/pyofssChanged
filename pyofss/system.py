@@ -213,8 +213,8 @@ class System(object):
                 self.df_results = pd.concat([self.df_results, df_new_results])
 
     def update_charact_file(self, obj):
-        self.update_laser_info(obj)
         if self.charact_dir is not None:
+            self.update_laser_info(obj)
             self.df_results.to_csv(os.path.join(self.charact_dir, "laser_info.csv"))
 
     def run(self):
@@ -226,4 +226,4 @@ class System(object):
         for module in self.modules:
             self.field = module(self.domain, self.field)
             self.fields[module.name] = self.field
-            self.update_charact_file(module)
+            #self.update_charact_file(module)
