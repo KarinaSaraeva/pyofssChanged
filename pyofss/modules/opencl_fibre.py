@@ -536,11 +536,9 @@ class OpenclFibre(object):
         max_power = cl.array.max(self.temporal_power, queue=self.queue)
 
         self.prg.cl_simpson(self.queue, tuple([self.shape[0] - 2]), None, self.temporal_power.data, self.simpson_result.data, self.np_float(self.domain.dt*1e-3))
-        
         energy = cl.array.sum(self.simpson_result, queue=self.queue)
-
-        self.energy_list.append(energy)
-        self.max_power_list.append(max_power)
+        self.energy_list.append(energy.get())
+        self.max_power_list.append(max_power.get())
         #self.peaks_list.append(get_peaks(temporal_power_cpu, max_power/10)) # cant be paralleled
 
     def cl_linear(self, field_buffer, stepsize, factor_buffer):

@@ -326,9 +326,9 @@ class Amplifier2LevelModel(AmplifierBase):
     def cl_calculate_N2(self, temp_arr_s): # Ps already sent to device
         self.prg.devide_array_by_another_const(self.queue, self.shape, None, temp_arr_s.data, self.Psat_s) # some values can be None
         temp_p = self.Pp / self.Psat_p
-        denominator = 1 + temp_p + np.sum(temp_arr_s.get())
+        denominator = 1 + temp_p + cl.array.sum(temp_arr_s, queue=self.queue).get()
         self.prg.multiply_array_by_another_const(self.queue, self.shape, None, temp_arr_s.data, self.ratio_s)
-        numerator = self.ratio_p * temp_p + np.sum(temp_arr_s.get())
+        numerator = self.ratio_p * temp_p + cl.array.sum(temp_arr_s, queue=self.queue).get()
         inversion_factor = numerator/denominator
         N2 = inversion_factor * self.N
         self.inversion_factor_list.append(inversion_factor)
