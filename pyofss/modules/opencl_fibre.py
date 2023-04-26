@@ -37,7 +37,8 @@ from string import Template
 from .linearity import Linearity
 from .nonlinearity import Nonlinearity
 from pyofss.modules.amplifier import Amplifier, Amplifier2LevelModel
-from scipy.signal import find_peaks
+from scipy.signal import find_peaks, peak_widths
+import warnings
 
 class FiberInitError(Exception):
     pass
@@ -190,27 +191,27 @@ OPENCL_OPERATIONS = Template("""
     }
 
     __kernel void cl_power(__global c${dorf}_t* field,
-                                __global ${dorf}* temporal_power) {
+                                __global ${dorf}* power_buffer) {
         int gid = get_global_id(0);
     
         c${dorf}_t c = field[gid];
-        temporal_power[gid] = c.real * c.real + c.imag * c.imag;
+        power_buffer[gid] = c.real * c.real + c.imag * c.imag;
     }
 
     __kernel void cl_physical_power(__global c${dorf}_t* field, __global const ${dorf}* factor,
-                                __global ${dorf}* temporal_power) {
+                                __global ${dorf}* power_buffer) {
         int gid = get_global_id(0);
     
         c${dorf}_t c = field[gid];
-        temporal_power[gid] = (c.real * c.real + c.imag * c.imag)*factor[0];
+        power_buffer[gid] = (c.real * c.real + c.imag * c.imag)*factor[0];
     }
     
-    __kernel void cl_simpson(__global ${dorf}* temporal_power, __global ${dorf}* output, const ${dorf} h) {
+    __kernel void cl_simpson(__global ${dorf}* power_buffer, __global ${dorf}* output, const ${dorf} h) {
         int gid = get_global_id(0);  
         if (!(gid % 2)) {
-            ${dorf} x0 = temporal_power[gid];
-            ${dorf} x1 = temporal_power[gid + 1];
-            ${dorf} x2 = temporal_power[gid + 2];
+            ${dorf} x0 = power_buffer[gid];
+            ${dorf} x1 = power_buffer[gid + 1];
+            ${dorf} x2 = power_buffer[gid + 2];
             
             ${dorf} result = (x0 + (${dorf})4.0f * x1 + x2);
             output[gid] = result * h / ((${dorf})3.0f) ;
@@ -262,17 +263,18 @@ class OpenclFibre(object):
                  tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18,
                  small_signal_gain=None, E_sat=None, lamb0=None, bandwidth=None, 
                  use_Yb_model=False, Pp_0 = None, N = None, Rr=None,
-                 dorf='double', ctx=None, fast_math=False, cycle=None):
+                 dorf='double', ctx=None, fast_math=False, cycle='cycle0', traces=None, dir=None):
+        self.dir = dir
 
         self.name = name
         self.cycle = cycle
-
         self.domain = None
 
         self.use_all = use_all
 
         self.gamma = gamma
-
+        self.beta_2 = beta[2] if beta is not None else None
+        
         self.nn_factor = None
         self.buf_nn_factor = None
         self.h_R = None
@@ -311,6 +313,7 @@ class OpenclFibre(object):
 
         self.length = length
         self.total_steps = total_steps
+        self.traces = traces if traces is not None else total_steps
 
         self.stepsize = self.length / self.total_steps
         self.zs = np.linspace(0.0, self.length, self.total_steps + 1)
@@ -349,11 +352,22 @@ class OpenclFibre(object):
         self.max_power_list = []
         self.peaks_list = []
 
-        self.temporal_power = None
+        self.z_list = []
+        self.temp_field_list = []
+        self.spec_field_list = []
+        self.power_buffer = None
         self.simpson_result = None
 
     def __call__(self, domain, field):
         # Setup plan for calculating fast Fourier transforms:
+        self.calculate_refrence_length(domain, field)
+        if self.stepsize > self.refrence_length * (10 ** (-2)):
+            warnings.warn(
+                f"{self.cycle}: {self.fibre_name}: h must be much less than dispersion length (L_D) and the nonlinear length (L_NL)\n        \
+                now the minimum of the characteristic distances is equal to {self.refrence_length:.6f}*km* \n         \
+                step is equal to {self.stepsize}*km*"
+            )
+
         if self.plan is None:
             if version_py == 3:
                 self.plan = FFT(domain.t.astype(self.np_complex)).compile(self.thr, 
@@ -379,14 +393,61 @@ class OpenclFibre(object):
 
         self.send_arrays_to_device(field, self.factor)
 
-        for z in self.zs[:-1]:
+        storage_step = int(self.total_steps / self.traces)
+
+        for i in range(len(self.zs[:-1])):
             self.method(self.buf_field, self.buf_temp,
                           self.buf_interaction, self.buf_factor, self.stepsize)
+            if (self.dir is not None) and (i % storage_step == 0):
+                self.prg.cl_power(self.queue, self.shape, None, self.buf_field.data, self.power_buffer.data)
+                self.temp_field_list.append(self.power_buffer.get())
+
+                self.plan.execute(self.buf_field.data, inverse=True)
+                self.prg.cl_power(self.queue, self.shape, None, self.buf_field.data, self.power_buffer.data)
+                self.plan.execute(self.buf_field.data)
+                self.prg.cl_fftshift(self.queue, self.shape, None, self.power_buffer.data, self.np_float(self.power_buffer.shape[0]))
+
+                self.spec_field_list.append(self.power_buffer.get())
+                self.z_list.append(self.zs[i])
             
         # gpu memory should be cleared here manualy all neede info is already loaded
         self.clear_arrays_on_device()
         return self.buf_field.get()
     
+    def calculate_refrence_length(self, domain, field):
+        temp_power = abs(field) ** 2
+        d_t = abs(domain.t[1] - domain.t[0])
+        P_0 = np.amax(temp_power)
+        peaks, _ = find_peaks(temp_power, height=0)
+        results_half = peak_widths(temp_power, peaks, rel_height=1)
+        T_0 = d_t * np.amax(results_half[0])
+        if (self.beta_2 is not None):
+            self.L_D = T_0**2 / (10**3 * self.beta_2)
+        if (self.gamma is not None):
+            self.L_NL = 1 / (self.gamma * P_0)
+        if (self.L_NL and self.L_D is not None):
+            self.refrence_length = min(self.L_NL, self.L_D)
+        elif (self.L_NL or self.L_D is None):
+            self.refrence_length = None
+        else:
+            self.refrence_length = self.L_NL if self.L_D is None else self.L_D
+
+
+    def get_df(self, is_temporal=True, z_curr=0, save_power = True, channel=None):
+        if save_power:
+            if is_temporal:
+                y = self.temp_field_list
+            else:
+                y = self.spec_field_list    
+            arr_z = np.array(self.z_list)*10**6 + z_curr
+            if self.cycle and self.name is not None:
+                iterables = [[self.cycle], [self.name], arr_z]
+                index = pd.MultiIndex.from_product(
+                    iterables,  names=["cycle", "fibre", "z [mm]"])
+            else:
+                iterables = [arr_z]
+                index = pd.MultiIndex.from_product(iterables, names=["z [mm]"])
+            return pd.DataFrame(y, index=index)
 
     #for usual fibre this info is in storage
     def get_df_result(
@@ -411,7 +472,7 @@ class OpenclFibre(object):
         # duration and spec width are not calculated in OpenclFibre
         # df_results["duration"] = self.duration_list   
         # df_results["spec_width"] = self.spec_width_list
-        df_results["peaks"] = self.peaks_list
+        # df_results["peaks"] = self.peaks_list
         return df_results
 
     def cl_initialise(self, dorf="float"):
@@ -475,8 +536,8 @@ class OpenclFibre(object):
         if self.buf_interaction is None:
             self.buf_interaction = cl_array.empty_like(self.buf_field)
 
-        if self.temporal_power is None:
-            self.temporal_power = cl_array.zeros(self.queue, self.shape, self.np_float)
+        if self.power_buffer is None:
+            self.power_buffer = cl_array.zeros(self.queue, self.shape, self.np_float)
         if self.simpson_result is None:
             self.simpson_result = cl_array.zeros(self.queue, self.shape, self.np_float)
 
@@ -507,7 +568,7 @@ class OpenclFibre(object):
 
         self.cl_clear(self.buf_temp)
         self.cl_clear(self.buf_interaction)
-        self.cl_clear(self.temporal_power)
+        self.cl_clear(self.power_buffer)
         self.cl_clear(self.simpson_result)
         self.cl_clear(self.buf_h_R)
         self.cl_clear(self.buf_nn_factor)
@@ -530,16 +591,16 @@ class OpenclFibre(object):
             peaks, _ = find_peaks(P, height=0, prominence=prominence)
             return peaks
 
-        self.prg.cl_power(self.queue, self.shape, None, field.data, self.temporal_power.data)
+        self.prg.cl_power(self.queue, self.shape, None, field.data, self.power_buffer.data)
 
         # Get the maximum value in the array
-        max_power = cl.array.max(self.temporal_power, queue=self.queue)
+        max_power = cl.array.max(self.power_buffer, queue=self.queue)
 
-        self.prg.cl_simpson(self.queue, tuple([self.shape[0] - 2]), None, self.temporal_power.data, self.simpson_result.data, self.np_float(self.domain.dt*1e-3))
+        self.prg.cl_simpson(self.queue, tuple([self.shape[0] - 2]), None, self.power_buffer.data, self.simpson_result.data, self.np_float(self.domain.dt*1e-3))
         energy = cl.array.sum(self.simpson_result, queue=self.queue)
         self.energy_list.append(energy.get())
         self.max_power_list.append(max_power.get())
-        #self.peaks_list.append(get_peaks(temporal_power_cpu, max_power/10)) # cant be paralleled
+        #self.peaks_list.append(get_peaks(power_buffer_cpu, max_power/10)) # cant be paralleled
 
     def cl_linear(self, field_buffer, stepsize, factor_buffer):
         """ Linear part of step. """
@@ -735,7 +796,7 @@ class OpenclFibre(object):
 if __name__ == "__main__":
     # Compare simulations using Fibre and OpenclFibre modules.
     from pyofss import Domain, System, Gaussian, Sech, Fibre
-    from pyofss import temporal_power, multi_plot, labels, lambda_to_nu
+    from pyofss import power_buffer, multi_plot, labels, lambda_to_nu
 
     import time
     
@@ -771,15 +832,15 @@ if __name__ == "__main__":
     OCL_DURATION = (stop - start)
     OCL_OUT = sys.fields["ocl_fibre"]
 
-    NO_OCL_POWER = temporal_power(NO_OCL_OUT)
-    OCL_POWER = temporal_power(OCL_OUT)
+    NO_OCL_POWER = power_buffer(NO_OCL_OUT)
+    OCL_POWER = power_buffer(OCL_OUT)
     DELTA_POWER = NO_OCL_POWER - OCL_POWER
 
     MEAN_RELATIVE_ERROR = np.mean(np.abs(DELTA_POWER))
-    MEAN_RELATIVE_ERROR /= np.max(temporal_power(NO_OCL_OUT))
+    MEAN_RELATIVE_ERROR /= np.max(power_buffer(NO_OCL_OUT))
     
     MAX_RELATIVE_ERROR = np.max(np.abs(DELTA_POWER))
-    MAX_RELATIVE_ERROR /= np.max(temporal_power(NO_OCL_OUT))
+    MAX_RELATIVE_ERROR /= np.max(power_buffer(NO_OCL_OUT))
 
     print("Run time without OpenCL: %e" % NO_OCL_DURATION)
     print("Run time with OpenCL: %e" % OCL_DURATION)
@@ -830,15 +891,15 @@ if __name__ == "__main__":
     OCL_DURATION = (stop - start)
     OCL_OUT = sys.fields["ocl_fibre"]
 
-    NO_OCL_POWER = temporal_power(NO_OCL_OUT)
-    OCL_POWER = temporal_power(OCL_OUT)
+    NO_OCL_POWER = power_buffer(NO_OCL_OUT)
+    OCL_POWER = power_buffer(OCL_OUT)
     DELTA_POWER = NO_OCL_POWER - OCL_POWER
 
     MEAN_RELATIVE_ERROR = np.mean(np.abs(DELTA_POWER))
-    MEAN_RELATIVE_ERROR /= np.max(temporal_power(NO_OCL_OUT))
+    MEAN_RELATIVE_ERROR /= np.max(power_buffer(NO_OCL_OUT))
     
     MAX_RELATIVE_ERROR = np.max(np.abs(DELTA_POWER))
-    MAX_RELATIVE_ERROR /= np.max(temporal_power(NO_OCL_OUT))
+    MAX_RELATIVE_ERROR /= np.max(power_buffer(NO_OCL_OUT))
 
     print("Run time without OpenCL: %e" % NO_OCL_DURATION)
     print("Run time with OpenCL: %e" % OCL_DURATION)
@@ -908,15 +969,15 @@ if __name__ == "__main__":
     OCL_DURATION = (stop - start)
     OCL_OUT = sys.fields["ocl_fibre"]
 
-    NO_OCL_POWER = temporal_power(NO_OCL_OUT)
-    OCL_POWER = temporal_power(OCL_OUT)
+    NO_OCL_POWER = power_buffer(NO_OCL_OUT)
+    OCL_POWER = power_buffer(OCL_OUT)
     DELTA_POWER = NO_OCL_POWER - OCL_POWER
 
     MEAN_RELATIVE_ERROR = np.mean(np.abs(DELTA_POWER))
-    MEAN_RELATIVE_ERROR /= np.max(temporal_power(NO_OCL_OUT))
+    MEAN_RELATIVE_ERROR /= np.max(power_buffer(NO_OCL_OUT))
     
     MAX_RELATIVE_ERROR = np.max(np.abs(DELTA_POWER))
-    MAX_RELATIVE_ERROR /= np.max(temporal_power(NO_OCL_OUT))
+    MAX_RELATIVE_ERROR /= np.max(power_buffer(NO_OCL_OUT))
 
     print("Run time without OpenCL: %e" % NO_OCL_DURATION)
     print("Run time with OpenCL: %e" % OCL_DURATION)

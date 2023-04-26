@@ -122,7 +122,7 @@ class System(object):
 
         raise Exception("Tried to modify non-existing module in system")
 
-    #must be called only for already calculated laser
+    # must be called only for already calculated laser
     def init_df(self, is_temporal=True, save_power=True):
         df = pd.DataFrame()
         z_curr = 0
@@ -134,6 +134,13 @@ class System(object):
                 if not df_new.empty:
                     z_curr = df_new.iloc[-1].name[-1]
                     df = pd.concat([df, df_new])
+            if type(obj) is OpenclFibre:
+                df_new = obj.get_df(
+                    z_curr=z_curr, is_temporal=is_temporal, save_power=save_power)
+                # concatenate dataframes that were received from different fibres if not empty
+                if not df_new.empty:
+                    z_curr = df_new.iloc[-1].name[-1]
+                    df = pd.concat([df, df_new])        
         if save_power:
             if is_temporal:
                 self.df_temp = df
