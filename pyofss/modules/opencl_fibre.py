@@ -198,6 +198,17 @@ OPENCL_OPERATIONS = Template("""
         power_buffer[gid] = c.real * c.real + c.imag * c.imag;
     }
 
+    kernel void cl_interpolate(__global ${dorf}* input, const ${dorf} n_input, __global ${dorf}* output, const ${dorf} n_output) {
+        int i = get_global_id (0); // index of output element
+        float t = (float)i / ((float)n_output); // normalized coordinate in [0, 1]
+        int j = (int)(t * (n_input - 1)); // lower index of input element
+        ${dorf} u = t * (n_input - 1) - j; // fractional part of input element
+        ${dorf} v0 = input[j]; // lower input value
+        ${dorf} v1 = input[j + 1]; // upper input value
+        ${dorf} v = mix(v0, v1, u); // linear interpolation
+        output[i] = v; // store interpolated value
+    }
+
     __kernel void cl_physical_power(__global c${dorf}_t* field, __global const ${dorf}* factor,
                                 __global ${dorf}* power_buffer) {
         int gid = get_global_id(0);
@@ -263,7 +274,7 @@ class OpenclFibre(object):
                  tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18,
                  small_signal_gain=None, E_sat=None, lamb0=None, bandwidth=None, 
                  use_Yb_model=False, Pp_0 = None, N = None, Rr=None,
-                 dorf='double', ctx=None, fast_math=False, cycle='cycle0', traces=None, dir=None):
+                 dorf='double', ctx=None, fast_math=False, cycle='cycle0', traces=None, downsampling=500, dir=None):
         self.dir = dir
 
         self.name = name
@@ -314,6 +325,7 @@ class OpenclFibre(object):
         self.length = length
         self.total_steps = total_steps
         self.traces = traces if traces is not None else total_steps
+        self.downsampling = downsampling
 
         self.stepsize = self.length / self.total_steps
         self.zs = np.linspace(0.0, self.length, self.total_steps + 1)
@@ -356,6 +368,7 @@ class OpenclFibre(object):
         self.temp_field_list = []
         self.spec_field_list = []
         self.power_buffer = None
+        self.downsampled_power_buffer = None
         self.simpson_result = None
 
     def __call__(self, domain, field):
@@ -395,20 +408,22 @@ class OpenclFibre(object):
 
         storage_step = int(self.total_steps / self.traces)
 
-        for i in range(len(self.zs[:-1])):
+        for i in range(len(self.zs[1:])):
             self.method(self.buf_field, self.buf_temp,
                           self.buf_interaction, self.buf_factor, self.stepsize)
             if (self.dir is not None) and (i % storage_step == 0):
                 self.prg.cl_power(self.queue, self.shape, None, self.buf_field.data, self.power_buffer.data)
-                self.temp_field_list.append(self.power_buffer.get())
+                self.prg.cl_interpolate(self.queue, tuple([self.downsampled_power_buffer.shape[0]]), None, self.power_buffer.data, self.np_float(self.power_buffer.shape[0]), self.downsampled_power_buffer.data, self.np_float(self.downsampled_power_buffer.shape[0]))
+                self.temp_field_list.append(self.downsampled_power_buffer.get())
 
                 self.plan.execute(self.buf_field.data, inverse=True)
                 self.prg.cl_power(self.queue, self.shape, None, self.buf_field.data, self.power_buffer.data)
                 self.plan.execute(self.buf_field.data)
                 self.prg.cl_fftshift(self.queue, self.shape, None, self.power_buffer.data, self.np_float(self.power_buffer.shape[0]))
 
-                self.spec_field_list.append(self.power_buffer.get())
-                self.z_list.append(self.zs[i])
+                self.prg.cl_interpolate(self.queue, tuple([self.downsampled_power_buffer.shape[0]]), None, self.power_buffer.data, self.np_float(self.power_buffer.shape[0]), self.downsampled_power_buffer.data, self.np_float(self.downsampled_power_buffer.shape[0]))
+                self.spec_field_list.append(self.downsampled_power_buffer.get())
+                self.z_list.append(self.zs[i+1])
             
         # gpu memory should be cleared here manualy all neede info is already loaded
         self.clear_arrays_on_device()
@@ -454,7 +469,7 @@ class OpenclFibre(object):
         self,
         z_curr=0,
     ):
-        z = self.zs[:-1]
+        z = self.zs[1:]
 
         arr_z = np.array(z)*10**6 + z_curr
         characteristic = ["max_value", "energy", "duration", "spec_width", "peaks"]
@@ -538,6 +553,8 @@ class OpenclFibre(object):
 
         if self.power_buffer is None:
             self.power_buffer = cl_array.zeros(self.queue, self.shape, self.np_float)
+        if self.downsampled_power_buffer is None:
+            self.downsampled_power_buffer = cl_array.zeros(self.queue, self.downsampling, self.np_float)
         if self.simpson_result is None:
             self.simpson_result = cl_array.zeros(self.queue, self.shape, self.np_float)
 
