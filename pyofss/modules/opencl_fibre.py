@@ -411,7 +411,7 @@ class OpenclFibre(object):
         for i in range(len(self.zs[1:])):
             self.method(self.buf_field, self.buf_temp,
                           self.buf_interaction, self.buf_factor, self.stepsize)
-            if (self.dir is not None) and (i % storage_step == 0):
+            if (i % storage_step == 0):
                 self.prg.cl_power(self.queue, self.shape, None, self.buf_field.data, self.power_buffer.data)
                 self.prg.cl_interpolate(self.queue, tuple([self.downsampled_power_buffer.shape[0]]), None, self.power_buffer.data, self.np_float(self.power_buffer.shape[0]), self.downsampled_power_buffer.data, self.np_float(self.downsampled_power_buffer.shape[0]))
                 self.temp_field_list.append(self.downsampled_power_buffer.get())
