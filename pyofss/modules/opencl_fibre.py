@@ -274,7 +274,7 @@ class OpenclFibre(object):
                  tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18,
                  small_signal_gain=None, E_sat=None, lamb0=None, bandwidth=None, 
                  use_Yb_model=False, Pp_0 = None, N = None, Rr=None,
-                 dorf='double', ctx=None, fast_math=False, cycle='cycle0', traces=None, downsampling=500, dir=None):
+                 dorf='double', ctx=None, fast_math=False, save_represent="power", cycle='cycle0', traces=None, downsampling=500, dir=None):
         self.dir = dir
 
         self.name = name
@@ -359,6 +359,9 @@ class OpenclFibre(object):
         self.nonlinearity = Nonlinearity(gamma, None, self_steepening,
                                          False, 0,
                                          use_all, tau_1, tau_2, f_R)
+        
+        # TODO: create local storage here too as it is done in fibre class
+
         self.factor = None
         self.energy_list = []
         self.max_power_list = []
@@ -367,6 +370,7 @@ class OpenclFibre(object):
         self.z_list = []
         self.temp_field_list = []
         self.spec_field_list = []
+        # self.complex_field_list = []
         self.power_buffer = None
         self.downsampled_power_buffer = None
         self.simpson_result = None
@@ -411,6 +415,8 @@ class OpenclFibre(object):
         for i in range(len(self.zs[1:])):
             self.method(self.buf_field, self.buf_temp,
                           self.buf_interaction, self.buf_factor, self.stepsize)
+            
+            # Storage part
             if (i % storage_step == 0):
                 self.prg.cl_power(self.queue, self.shape, None, self.buf_field.data, self.power_buffer.data)
                 self.prg.cl_interpolate(self.queue, tuple([self.downsampled_power_buffer.shape[0]]), None, self.power_buffer.data, self.np_float(self.power_buffer.shape[0]), self.downsampled_power_buffer.data, self.np_float(self.downsampled_power_buffer.shape[0]))
@@ -423,9 +429,12 @@ class OpenclFibre(object):
 
                 self.prg.cl_interpolate(self.queue, tuple([self.downsampled_power_buffer.shape[0]]), None, self.power_buffer.data, self.np_float(self.power_buffer.shape[0]), self.downsampled_power_buffer.data, self.np_float(self.downsampled_power_buffer.shape[0]))
                 self.spec_field_list.append(self.downsampled_power_buffer.get())
+
+                # TODO: add saving complex field
+                # self.complex_field_list.append(self.buf_field.get())
                 self.z_list.append(self.zs[i+1])
             
-        # gpu memory should be cleared here manualy all neede info is already loaded
+        # gpu memory should be cleared here manualy all needed info is already loaded
         self.clear_arrays_on_device()
         return self.buf_field.get()
     
@@ -447,22 +456,26 @@ class OpenclFibre(object):
         else:
             self.refrence_length = self.L_NL if self.L_D is None else self.L_D
 
-
-    def get_df(self, is_temporal=True, z_curr=0, save_power = True, channel=None):
-        if save_power:
-            if is_temporal:
-                y = self.temp_field_list
-            else:
-                y = self.spec_field_list    
-            arr_z = np.array(self.z_list)*10**6 + z_curr
-            if self.cycle and self.name is not None:
-                iterables = [[self.cycle], [self.name], arr_z]
-                index = pd.MultiIndex.from_product(
-                    iterables,  names=["cycle", "fibre", "z [mm]"])
-            else:
-                iterables = [arr_z]
-                index = pd.MultiIndex.from_product(iterables, names=["z [mm]"])
-            return pd.DataFrame(y, index=index)
+    #for usual fibre this info is in storage
+    def get_df(self, type = "complex", z_curr=0, channel=None):
+        if type == "temp":
+            y = self.temp_field_list
+        elif type == "spec":
+            y = self.spec_field_list   
+        elif type == "complex":
+            warnings.warn("Saving downsampled complex power has not been made yet!")
+        else:
+            raise ValueError()
+         
+        arr_z = np.array(self.z_list)*10**6 + z_curr # mm
+        if self.cycle and self.name is not None:
+            iterables = [[self.cycle], [self.name], arr_z]
+            index = pd.MultiIndex.from_product(
+                iterables,  names=["cycle", "fibre", "z [mm]"])
+        else:
+            iterables = [arr_z]
+            index = pd.MultiIndex.from_product(iterables, names=["z [mm]"])
+        return pd.DataFrame(y, index=index)           
 
     #for usual fibre this info is in storage
     def get_df_result(

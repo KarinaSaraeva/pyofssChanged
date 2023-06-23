@@ -340,7 +340,7 @@ class Amplifier2LevelModel(AmplifierBase):
         N2 = self.cl_calculate_N2(self.spectral_power_buffer)
         self.cl_calculate_g_s_exponent(N2, h) # stored in self.g_s_buffer
         g_p = self.calculate_g_p(N2)
-        ##self.gs_list.append(self.g_s_buffer.get())
+        self.gs_list.append(self.g_s_buffer.get())
         self.update_Pp(g_p, h)
 
     def cl_clear(self, cl_arr):

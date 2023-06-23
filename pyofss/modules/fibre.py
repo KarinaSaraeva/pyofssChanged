@@ -77,7 +77,7 @@ class Fibre(object):
                  tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18, 
                  small_signal_gain=None, E_sat=None, lamb0=None, bandwidth=None, 
                  use_Yb_model=False, Pp_0 = None, N = None, Rr=None,
-                 dir=None, save_represent="temporal", cycle=None):
+                 dir=None, save_represent="power", cycle=None):
 
         use_cache = not(method.upper().startswith('A'))
 

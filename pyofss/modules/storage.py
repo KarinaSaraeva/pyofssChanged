@@ -121,13 +121,10 @@ class Storage(object):
 
     def __init__(self, dir=None, cycle=None, fibre_name=None, **file_import_arguments):
         if dir is not None:
-            self.dir_temp = os.path.join(dir, "temp")
-            self.dir_spec = os.path.join(dir, "spec")
-            check_dir(self.dir_temp)
-            check_dir(self.dir_spec)
+            self.dir = dir
+            check_dir(self.dir)
         else:
-            self.dir_temp = None
-            self.dir_spec = None
+            self.dir = None
 
         self.cycle = cycle
         self.fibre_name = fibre_name
@@ -193,61 +190,57 @@ class Storage(object):
         self.duration_list.append(get_duration(temporal_power_arr, self.t[1] - self.t[0]))
         self.spec_width_list.append(get_duration(spectral_power_arr, self.nu[1] - self.nu[0]))
 
-    def save_all_storage_to_dir(
-        self,
-        is_temporal=True,
-        channel=None,
-        **file_import_arguments,
-    ):
-        for i in range(len(self.As)):
-            self.save_step_to_file(is_temporal=is_temporal,
-                                   channel=channel,
-                                   i=i,
-                                   **file_import_arguments,
-                                   )
-
     def save_all_storage_to_dir_as_df(
         self,
-        is_temporal=True,
         save_power = True,
         channel=None,
     ):
-        if self.dir_temp and self.dir_spec is not None:
-            if is_temporal:
-                dir = self.dir_temp
-            else:
-                dir = self.dir_spec
-
+        if self.dir is not None:
             if save_power:
-                (x, y, z) = self.get_plot_data(is_temporal=is_temporal)
-            else:
-                y = self.As
-                z = self.z
+                dir_temp = os.path.join(dir, "temp")
+                dir_spec = os.path.join(dir, "spec")
+                check_dir(dir_temp)
+                check_dir(dir_spec)
 
-            index = pd.MultiIndex.from_product([z], names=["z [mm]"])
-            df1 = pd.DataFrame(y, index=index)
-            file_name = os.path.join(dir, f"{self.fibre_name}.csv")
-            with open(file_name, "w") as f:
-                df1.to_csv(file_name)
-            file_name_info = os.path.join(dir, f"current_info.txt")
+                df_temp = self.get_df("temp")
+                file_name_temp = os.path.join(dir_temp, f"{self.fibre_name}.csv")
+                df_temp.to_csv(file_name_temp)
+
+                df_spec = self.get_df("spec")
+                file_name_spec = os.path.join(dir_spec, f"{self.fibre_name}.csv")
+                df_spec.to_csv(file_name_spec)
+            else:
+                dir_complex = os.path.join(dir, "complex")
+                check_dir(dir_complex)
+                
+                df_complex = self.get_df("complex")
+                file_name_complex = os.path.join(dir_complex, f"{self.fibre_name}.csv")
+                df_complex.to_csv(file_name_complex)
+
+            file_name_info = os.path.join(self.dir, f"current_info.txt")
+
             with open(file_name_info, 'w') as f:
                 f.write(f"current cycle: {self.cycle}, current fibre: {self.fibre_name}")
+        else:
+            warnings.warn("Nothing will be saved - base fibre directory is not stated!")
 
     def get_df(
         self,
-        is_temporal=True,
+        type = "complex",
         z_curr=0,
-        save_power = True,
         channel=None,
     ):
-        if save_power:
-            (x, y, z) = self.get_plot_data(is_temporal=is_temporal)
-        else:
+        if type == "temp":
+            x, y, z = self.get_plot_data(is_temporal=True)
+        elif type == "spec":
+            x, y, z = self.get_plot_data(is_temporal=False)
+        elif type == "complex":
             y = self.As
-            x = self.t
             z = self.z
+        else:
+            raise ValueError()
 
-        arr_z = np.array(z)*10**6 + z_curr
+        arr_z = np.array(z)*10**6 + z_curr # mm
         if self.cycle and self.fibre_name is not None:
             iterables = [[self.cycle], [self.fibre_name], arr_z]
             index = pd.MultiIndex.from_product(
@@ -281,123 +274,6 @@ class Storage(object):
         df_results["spec_width"] = self.spec_width_list
         df_results["peaks"] = self.peaks_list
         return df_results
-
-    def save_step_to_file(self, is_temporal=True, channel=None, i=-1, **file_import_arguments):
-        if self.dir_temp and self.dir_spec is not None:
-            if is_temporal:
-                x = self.t
-                x_label = "t"
-                calculate_power = temporal_power
-                dir = self.dir_temp
-            else:
-                x = self.nu
-                x_label = "nu"
-                calculate_power = spectral_power
-                dir = self.dir_spec
-
-            if channel is None:
-                temp = self.As[i]
-                y = temp
-                df = pd.DataFrame(np.column_stack(
-                    [x, calculate_power(y)]), columns=[x_label, "P"])
-                file_name = os.path.join(
-                    dir,
-                    f"z{i if i!=-1 else len(self.z)}_{self.z[i]*1e6:.2f}mm.csv",
-                )
-                with open(file_name, "w") as f:
-                    if len(file_import_arguments) != 0:
-                        self.file_import_arguments = file_import_arguments
-                    for arg in self.file_import_arguments.items():
-                        f.write(f"# {arg[0]}={arg[1]} \n")
-                    f.write(f"# z_current={self.z[i]} \n")
-                    df.to_csv(f, sep=" ")
-
-    def set_file_export_arguments(self, commentlines):
-        for line in commentlines:
-            if "alpha=" in line:
-                first, remainder = line.split("alpha=")
-                alpha = get_value_from_str(remainder.split()[0])
-            elif "beta2=" in line:
-                first, remainder = line.split("beta2=")
-                beta2 = get_value_from_str(remainder.split()[0])
-            elif "beta3=" in line:
-                first, remainder = line.split("beta3=")
-                beta3 = get_value_from_str(remainder.split()[0])
-            elif "gamma=" in line:
-                first, remainder = line.split("gamma=")
-                gamma = get_value_from_str(remainder.split()[0])
-            elif "small_signal_gain=" in line:
-                first, remainder = line.split("small_signal_gain=")
-                small_signal_gain = get_value_from_str(remainder.split()[0])
-            elif "E_sat=" in line:
-                first, remainder = line.split("E_sat=")
-                E_sat = get_value_from_str(remainder.split()[0])
-            elif "length=" in line:
-                first, remainder = line.split("length=")
-                length = get_value_from_str(remainder.split()[0])
-            elif "z_current=" in line:
-                first, remainder = line.split("z_current=")
-                z_current = get_value_from_str(remainder.split()[0])
-
-        self.file_export_arguments = {
-            "alpha": alpha,
-            "beta": [0, 0, beta2, beta3],
-            "gamma": gamma,
-            "small_signal_gain": small_signal_gain,
-            "E_sat": E_sat,
-        }
-
-        return z_current
-
-    def read_all_from_dir(self, is_temporal=True,):
-        if is_temporal:
-            dir = self.dir_temp
-        else:
-            dir = self.dir_spec
-
-        z = np.zeros(len(os.listdir(dir)))
-        y = None
-        x = None
-
-        list = os.listdir(dir)
-
-        def sorting_func(name):
-            name = name.replace("z", "")
-            sub = name.split("_", 1)[1]
-            name = name.replace(sub, "")
-            name = name.replace("_", "")
-            return int(name)
-
-        list.sort(key=sorting_func)
-
-        for i in range(len(list)):
-            commentlines = []
-            filename = os.path.join(dir, list[i])
-            with open(filename) as f:
-                for line in f:
-                    if line.startswith("#"):
-                        commentlines.append(line)
-
-                z_current = self.set_file_export_arguments(commentlines)
-                df = pd.read_csv(filename, index_col=0, comment="#", sep=" ")
-                x_current = df[df.columns[0]].values
-                y_current = df[df.columns[1]].values
-                if y is None:
-                    y = np.zeros((len(z), len(x_current)))
-                    x_previos = x_current
-                    x = x_current
-                if not np.array_equal(x_previos, x_current):
-                    raise DifferentAxisError(
-                        "the x-axis is different when reading files, you can not get data for plotting"
-                    )
-
-                z[i] = z_current
-                y[i] = y_current
-
-        self.z = z
-        self.plt_data = (x, y, z)
-
-        return self.plt_data
 
     def get_plot_data(
         self,

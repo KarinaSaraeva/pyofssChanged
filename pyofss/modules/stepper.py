@@ -80,7 +80,7 @@ class Stepper(object):
     """
 
     def __init__(self, traces=1, local_error=1.0e-6, method="RK4",
-                 f=None, length=1.0, total_steps=100, dir=None, save_represent="temporal", cycle=None, fibre_name=None, **file_import_arguments):
+                 f=None, length=1.0, total_steps=100, dir=None, save_represent="power", cycle=None, fibre_name=None, **file_import_arguments):
         self.traces = traces
         self.local_error = local_error
         self.save_represent = save_represent
@@ -189,23 +189,12 @@ class Stepper(object):
         # if self.traces > 1 and (self.traces != self.total_steps):
         #     self.storage.interpolate_As_for_z_values(trace_zs)
 
-        if (self.storage.dir_spec and self.storage.dir_temp):
-            if (self.save_represent == "both"):
-                self.storage.save_all_storage_to_dir_as_df(
-                    is_temporal=True)
-                self.storage.save_all_storage_to_dir_as_df(
-                    is_temporal=False)
-            elif (self.save_represent == "spectral"):
-                self.storage.save_all_storage_to_dir_as_df(
-                    is_temporal=False)
-            elif (self.save_represent == "temporal"):
-                self.storage.save_all_storage_to_dir_as_df(
-                    is_temporal=True)
-            elif (self.save_represent == "complex"):
-                self.storage.save_all_storage_to_dir_as_df(
-                    is_temporal=True, save_power=False)
-            else:
-               print(f"flag should be one of these: spectral, spectral, both, complex") 
+        if (self.save_represent == "power"):
+            self.storage.save_all_storage_to_dir_as_df(save_power=True)
+        elif (self.save_represent == "complex"):
+            self.storage.save_all_storage_to_dir_as_df(save_power=False)
+        else:
+            warnings.warn(f"Flag should be one of these: 'power', 'complex'!") 
 
         return self.A_out
 
@@ -353,22 +342,12 @@ class Stepper(object):
                 # if self.traces > 1:
                 #     self.storage.interpolate_As_for_z_values(zs)
                 if (self.storage.dir_spec and self.storage.dir_temp):
-                    if (self.save_represent == "both"):
-                        self.storage.save_all_storage_to_dir_as_df(
-                            is_temporal=True)
-                        self.storage.save_all_storage_to_dir_as_df(
-                            is_temporal=False)
-                    elif (self.save_represent == "spectral"):
-                        self.storage.save_all_storage_to_dir_as_df(
-                            is_temporal=False)
-                    elif (self.save_represent == "temporal"):
-                        self.storage.save_all_storage_to_dir_as_df(
-                            is_temporal=True)
+                    if (self.save_represent == "power"):
+                        self.storage.save_all_storage_to_dir_as_df(save_power=True)
                     elif (self.save_represent == "complex"):
-                        self.storage.save_all_storage_to_dir_as_df(
-                            is_temporal=True, save_power=False)
+                        self.storage.save_all_storage_to_dir_as_df(save_power=False)
                     else:
-                        print(f"flag should be one of these: spectral, spectral, both, complex") 
+                        print(f"flag should be one of these: 'power', 'complex'") 
                 return self.A_out
 
             total_amount_of_steps = total_amount_of_steps + 1

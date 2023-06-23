@@ -73,11 +73,10 @@ class System(object):
         self.fields = None
         self.modules = None
         self.clear(remove_modules=True)
-        self.df_temp = None
-        self.df_spec = None
-        self.df_complex = None
+        
         self.df_results = None
-
+        df_temp, df_spec, df_complex = None, None, None
+        self.df_type_dict = {"temp": df_temp, "spec": df_spec, "complex": df_complex}
         self.z_curr = 0
 
         if field is not None:
@@ -123,90 +122,41 @@ class System(object):
         raise Exception("Tried to modify non-existing module in system")
 
     # must be called only for already calculated laser
-    def init_df(self, is_temporal=True, save_power=True):
+    def init_df(self, df_type="complex"):
         df = pd.DataFrame()
         z_curr = 0
         for obj in self.modules:
             if type(obj) is Fibre:
-                df_new = obj.stepper.storage.get_df(
-                    z_curr=z_curr, is_temporal=is_temporal, save_power=save_power)
+                df_new = obj.stepper.storage.get_df(type=df_type, z_curr=z_curr)
                 # concatenate dataframes that were received from different fibres if not empty
                 if not df_new.empty:
                     z_curr = df_new.iloc[-1].name[-1]
                     df = pd.concat([df, df_new])
             if type(obj) is OpenclFibre:
-                df_new = obj.get_df(
-                    z_curr=z_curr, is_temporal=is_temporal, save_power=save_power)
+                df_new = obj.get_df(type=df_type, z_curr=z_curr)
                 # concatenate dataframes that were received from different fibres if not empty
                 if not df_new.empty:
                     z_curr = df_new.iloc[-1].name[-1]
                     df = pd.concat([df, df_new])        
-        if save_power:
-            if is_temporal:
-                self.df_temp = df
-            else:
-                self.df_spec = df
+        if df_type in self.df_type_dict.keys():
+            self.df_type_dict[df_type] = df
         else:
-            self.df_complex = df
+            raise ValueError()
 
     # save the whole laser dataframe only if needed
-    def save_df_to_csv(self, dir, name="laser", is_temporal=True, save_power=True):
+    def save_df_to_csv(self, dir, df_type="complex", name="laser"):
         check_dir(dir)
-        if is_temporal:
-            if self.df_temp is None:
-                self.init_df(is_temporal=is_temporal, save_power=save_power)
-            file_name = os.path.join(dir, name + "_temp.csv")
+        if df_type in self.df_type_dict.keys():
+            if self.df_type_dict[df_type] is None:
+                self.init_df(df_type=df_type)
+            file_name = os.path.join(dir, name + "_" + df_type + ".csv")
             with open(file_name, "w") as f:
-                self.df_temp.to_csv(file_name)
+                self.df_type_dict[df_type].to_csv(file_name)
         else:
-            if self.df_spec is None:
-                self.init_df(is_temporal=is_temporal, save_power=save_power)
-            file_name = os.path.join(dir, name + "_spec.csv")
-            with open(file_name, "w") as f:
-                self.df_spec.to_csv(file_name)
-
-    def get_last_cycle_df(self, df_laser):
-        cycle_names = list(
-            set(df_laser.index.get_level_values('cycle').values))
-        cycle_names.sort()
-        return df_laser.loc[(cycle_names[-1])]
-
-    def save_last_cycle_df_to_csv(self, dir, name="last_cycle", save_represent="complex"):
-        check_dir(dir)
-        if (save_represent == "both"):
-            if self.df_temp is None:
-                self.init_df(is_temporal=True, save_power=True)
-            file_name = os.path.join(dir, name + "_temp.csv")
-            with open(file_name, "w") as f:
-                self.get_last_cycle_df(self.df_temp).to_csv(file_name)
-
-            if self.df_spec is None:
-                self.init_df(is_temporal=False, save_power=True)
-            file_name = os.path.join(dir, name + "_spec.csv")
-            with open(file_name, "w") as f:
-                self.get_last_cycle_df(self.df_spec).to_csv(file_name)
-        elif (save_represent == "temporal"):
-            if self.df_temp is None:
-                self.init_df(is_temporal=True, save_power=True)
-            file_name = os.path.join(dir, name + "_temp.csv")
-            with open(file_name, "w") as f:
-                self.get_last_cycle_df(self.df_temp).to_csv(file_name)
-        elif (save_represent == "spectral"):
-            if self.df_spec is None:
-                self.init_df(is_temporal=False, save_power=True)
-            file_name = os.path.join(dir, name + "_spec.csv")
-            with open(file_name, "w") as f:
-                self.get_last_cycle_df(self.df_spec).to_csv(file_name)
-        elif (save_represent == "complex"):
-            if self.df_complex is None:
-                self.init_df(is_temporal=True, save_power=False)
-            file_name = os.path.join(dir, name + "_complex.csv")
-            with open(file_name, "w") as f:
-                self.get_last_cycle_df(self.df_complex).to_csv(file_name)
+            raise ValueError()
 
     def update_laser_info(self, obj):
         df_new_results = None
-        
         if type(obj) is Fibre:
                 df_new_results = obj.stepper.storage.get_df_result(self.z_curr)
         if type(obj) is OpenclFibre:
@@ -236,4 +186,4 @@ class System(object):
             self.field = module(self.domain, self.field)
             self.fields[module.name] = self.field
             self.update_result_df(module)
-            #self.save_result_df_to_scv(self.charact_dir)
+            # self.save_result_df_to_scv(self.charact_dir)
