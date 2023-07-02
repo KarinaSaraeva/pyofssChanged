@@ -38,14 +38,17 @@ class AmplifierBase(ABC):
 
 
 class Amplifier(AmplifierBase):
-    """
-    :param string name: Name of this module
-    :param double gain: Amount of (logarithmic) gain. *Unit: dB*
-    :param double E_saturation: Energy of saturation gain. *Unit: nJ*
-    :param double P_saturation: Power of saturation gain. *Unit: W*
-    :param double rep_rate: Repetition rate of pulse. *Unit: MHz*
+    """ 
+    :param string name: name of this module
+    :param double gain: amount of (logarithmic) gain. *Unit: dB*
+    :param double E_sat: energy of saturation gain. *Unit: nJ*
+    :param double P_sat: power of saturation gain. *Unit: W*
+    :param double rep_rate: repetition rate of pulse. *Unit: MHz*
+    :param double length: length of the amplifier. *Unit m*
+    :parma double lamb0: amplification lorenz profile central wavelength. *Unit: nm*
+    :parma double bandwidth: amplification lorenz profile width. *Unit: nm*
 
-    Simple amplifier provides gain but no noise
+    Amplifier provides gain based on simple amplification model with saturation with possible usage of an amplification lorenz curve 
     """
 
     def __init__(self, name="simple_saturation", gain=None,
@@ -99,6 +102,7 @@ class Amplifier(AmplifierBase):
             return self._spectal_filtration_array
 
     def factor(self, A, h):
+        """ amplification factor used in an exponent of a linearity step """
         if self.domain is None:
             raise Exception("Domain is not preset.")
 
@@ -120,6 +124,22 @@ class Amplifier(AmplifierBase):
 
 class Amplifier2LevelModel(AmplifierBase):
     def __init__(self, name="amplifier2LevelModel", Pp=None, N=None, Rr=None, prg=None, queue=None, ctx=None, dorf="double"):
+        """ 
+        :param string name: name of this module
+        :param double Pp: pump power *Unit: W*
+        :param double N: the total number of Yb-ions integrated over the fibre mode
+        :param double Rr: round trip frequency *Unit: THz*
+
+        For OpenCl usage:
+
+        :param object prg: opencl programm that includes all the needed opencl operations
+        :param object queue: opencl command queue
+        :parma object ctx: opencl context
+        :parma string dorf: type of opencl arrays
+
+        Amplifier2LevelModel provides wavelength dependent gain based on a Yb rate equations.
+        All the formulas are similar to those used in the article "Kirsch, D.C. at all., 2022, Communications Physics, 5(1), p.219."
+        """
         print(f"use two level Yb gain model")
         #constatnts 
         self.h_p = 6.62 * 1e-34
@@ -304,8 +324,9 @@ class Amplifier2LevelModel(AmplifierBase):
         self._Pp = self._Pp * np.exp(g_p * h * 1e3)
     
     def factor(self, A, h): 
-        # g_s: array in frequency domain is calculated with respect to current N2 and N1: recalculated on yeach z step
-        # g_p: value is calculated with respect to current N2 and N1: recalculated on yeach z step 
+        """ amplification factor used in an exponent of a linearity step """
+        # g_s: array in frequency domain calculated with respect to current N2 and N1: recalculated on yeach z step
+        # g_p: value calculated with respect to current N2 and N1: recalculated on yeach z step 
         if self.domain is None:
             raise Exception("Domain is not preset.")
 
@@ -334,7 +355,9 @@ class Amplifier2LevelModel(AmplifierBase):
         self.inversion_factor_list.append(inversion_factor)
         return N2
 
-    def cl_exp_factor(self, A, h): # A must be Fourie transormed and already sent to device
+    def cl_exp_factor(self, A, h): 
+        """ same as self.factor: but update array self.gs_buffer stored on device """
+        # A must be Fourie transormed and already sent to device
         self.prg.cl_physical_power(self.queue, self.shape, None, A.data, self.physical_power_factor, self.spectral_power_buffer.data)
         self.prg.cl_fftshift(self.queue, self.shape, None, self.spectral_power_buffer.data, self.np_float(self.shape[0]))
         N2 = self.cl_calculate_N2(self.spectral_power_buffer)
@@ -344,16 +367,19 @@ class Amplifier2LevelModel(AmplifierBase):
         self.update_Pp(g_p, h)
 
     def cl_clear(self, cl_arr):
+        """ clear array on a device """
         if cl_arr is not None:
             if cl_arr.size > 0:
                 cl_arr.data.release() 
 
     def cl_clear_const(self, cl_arr):
+        """ clear const on a device """
         if cl_arr is not None:
             if cl_arr.size > 0:
                 cl_arr.release() 
 
     def clear_arrays_on_device(self):
+        """ clear everything stored on a device """
         if self.prg:
             self.cl_clear(self.spectral_power_buffer)
             self.cl_clear(self.g_s_buffer)
