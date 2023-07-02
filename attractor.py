@@ -11,16 +11,21 @@ import time
 import sys
 import os
 
+def check_dir(dir):
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+        print("Directory: ", dir, " is created!")
+
 # peak params 
-peak_power = float(sys.argv[0]) # 600 W  
-peak_width = float(sys.argv[1]) # 2 ps
-output_dir = sys.argv[2]
+peak_power = float(sys.argv[1]) # 600 W  
+peak_width = float(sys.argv[2]) # 2 ps
+output_dir = sys.argv[3]
 
 print("use opencl fibre to model pulse propagation")
 print(f"parameters: \n  peak_power = {peak_power}, peak_width = {peak_width}")
 # parameters from the article "Nonlinear ultrafast fiber amplifiers beyond the gain-narrowing limit" PAVEL SIDORENKO,* WALTER FU, AND FRANK WISE
 result_folder = os.path.join(output_dir, f"PP_{peak_power:.2f}_PW_{peak_width:.2f}")
-
+check_dir(result_folder)
 peak_C = 0.
 total_steps = 30001
 lamb0 = 1028    
@@ -49,7 +54,7 @@ lines.append(f"Pp_0: {Pp_0}")
 lines.append(f"N: {N}")
 lines.append(f"Tr: {Tr}")
 lines.append(f"downsampling: {downsampling}")
-with open(os.path.join(output_dir, "input_info.txt"), 'w') as f:
+with open(os.path.join(result_folder, "input_info.txt"), 'w') as f:
     for line in lines:
         f.write(line)
         f.write('\n')
@@ -69,9 +74,9 @@ sys1.df_results
 print("Run time with cl is {}".format(stop-start))
 
 # result dataframes
-sys1.save_df_to_csv(output_dir, is_temporal=True, save_power=True)
-sys1.save_df_to_csv(output_dir, is_temporal=False, save_power=True)
-sys1.save_result_df_to_scv(output_dir)
+sys1.save_df_to_csv(result_folder, is_temporal=True, save_power=True)
+sys1.save_df_to_csv(result_folder, is_temporal=False, save_power=True)
+sys1.save_result_df_to_scv(result_folder)
 
 f_t = interp1d(np.arange(len(domain.t)), domain.t)
 interpolated_t = f_t(np.linspace(0, len(domain.t) - 1, downsampling))
@@ -81,9 +86,9 @@ interpolated_nu = f_nu(np.linspace(0, len(domain.nu) - 1, downsampling))
 
 # plots
 single_plot(interpolated_t, sys1.df_temp.iloc[-1], labels["t"], labels["P_t"], "final_pulse")
-plt.savefig(os.path.join(output_dir, 'final_pulse_t'))
+plt.savefig(os.path.join(result_folder, 'final_pulse_t'))
 single_plot(interpolated_nu, sys1.df_spec.iloc[-1], labels["nu"], labels["P_nu"], "final_pulse")
-plt.savefig(os.path.join(output_dir, 'final_pulse_nu'))
+plt.savefig(os.path.join(result_folder, 'final_pulse_nu'))
 
 # output_info
 lines = []
@@ -102,7 +107,7 @@ lines.append(f"output_energy: {output_energy} nJ")
 lines.append(f"L_NL {sys1.modules[1].L_NL*1e3} m")
 lines.append(f"L_D {sys1.modules[1].L_D*1e3} m")
 
-with open(os.path.join(output_dir, "output_info.txt"), 'w') as f:
+with open(os.path.join(result_folder, "output_info.txt"), 'w') as f:
     for line in lines:
         f.write(line)
         f.write('\n')
