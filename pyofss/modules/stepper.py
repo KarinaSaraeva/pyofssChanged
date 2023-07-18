@@ -53,6 +53,10 @@ class Stepper(object):
     :param object f: Derivative function to be solved
     :param double length: Length to integrate over
     :param Uint total_steps: Number of steps to use for ODE integration
+    :param string dir: directory to save all the storage
+    :param string save_represent: "power" or "complex" type of dataframe saved
+    :param cycle string: cycle name in dataframe
+    :param fibre_name: fibre name in dataframe
 
     method:
       * EULER -- Euler method;
@@ -83,7 +87,10 @@ class Stepper(object):
                  f=None, length=1.0, total_steps=100, dir=None, save_represent="power", cycle=None, fibre_name=None, **file_import_arguments):
         self.traces = traces
         self.local_error = local_error
-        self.save_represent = save_represent
+        try:
+            self.save_df = getattr(self, "save_df_" + save_represent)
+        except AttributeError:
+            print("No such method: save_represent should be either 'complex' or 'power'")
         self.cycle = cycle
         self.fibre_name = fibre_name
         # Check if adaptive stepsize is required:
@@ -132,6 +139,12 @@ class Stepper(object):
             return self.adaptive_stepper(A, refrence_length)
         else:
             return self.standard_stepper(A, refrence_length)
+        
+    def save_df_power(self):
+        self.storage.save_all_storage_to_dir_as_df(save_power=True)
+
+    def save_df_complex(self):
+        self.storage.save_all_storage_to_dir_as_df(save_power=False)
 
     def standard_stepper(self, A, refrence_length):
         """ Take a fixed number of steps, each of equal length """
@@ -189,14 +202,15 @@ class Stepper(object):
         # if self.traces > 1 and (self.traces != self.total_steps):
         #     self.storage.interpolate_As_for_z_values(trace_zs)
 
-        if (self.save_represent == "power"):
-            self.storage.save_all_storage_to_dir_as_df(save_power=True)
-        elif (self.save_represent == "complex"):
-            self.storage.save_all_storage_to_dir_as_df(save_power=False)
-        else:
-            warnings.warn(f"Flag should be one of these: 'power', 'complex'!") 
+        self.save_df()
 
         return self.A_out
+    
+    def save_power(self):
+        self.storage.save_all_storage_to_dir_as_df(save_power=True)
+
+    def save_complex_field(self):
+        self.storage.save_all_storage_to_dir_as_df(save_power=False)
 
     @staticmethod
     def relative_local_error(A_fine, A_coarse):

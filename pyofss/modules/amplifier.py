@@ -177,7 +177,7 @@ class Amplifier2LevelModel(AmplifierBase):
         # use read-only memory for constant to be cashed on devise
 
     def send_array_to_device_const(self, array):
-        return cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=array.astype(self.np_float))
+        return cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.USE_HOST_PTR, hostbuf=array.astype(self.np_float))
 
     def load_sigma_s(self):
         import os.path
@@ -320,7 +320,7 @@ class Amplifier2LevelModel(AmplifierBase):
         return self.alpha_p * N2 - self.eta_p
     
     def update_Pp(self, g_p, h):
-        self.Pp_list.append(self._Pp)
+        # self.Pp_list.append(self._Pp)
         self._Pp = self._Pp * np.exp(g_p * h * 1e3)
     
     def factor(self, A, h): 
@@ -333,7 +333,7 @@ class Amplifier2LevelModel(AmplifierBase):
         N2 = self.calculate_N2(spectral_power(A)*len(A)*self.domain.dt/(self.Tr))
         g_s = self.calculate_g_s(N2)
         g_p = self.calculate_g_p(N2)
-        self.gs_list.append(np.exp(g_s * h * 1e3 / 2))
+        # self.gs_list.append(np.exp(g_s * h * 1e3 / 2))
         self.update_Pp(g_p, h)
         return fftshift(g_s * h * 1e3 / 2)
     
@@ -363,7 +363,7 @@ class Amplifier2LevelModel(AmplifierBase):
         N2 = self.cl_calculate_N2(self.spectral_power_buffer)
         self.cl_calculate_g_s_exponent(N2, h) # stored in self.g_s_buffer
         g_p = self.calculate_g_p(N2)
-        self.gs_list.append(self.g_s_buffer.get())
+        # self.gs_list.append(self.g_s_buffer.get())
         self.update_Pp(g_p, h)
 
     def cl_clear(self, cl_arr):

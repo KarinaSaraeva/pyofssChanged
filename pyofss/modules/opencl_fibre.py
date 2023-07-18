@@ -22,6 +22,7 @@
 import numpy as np
 import pyopencl as cl
 import pyopencl.array as cl_array
+from pynvml import *
 import gc
 import pandas as pd
 from pyofss.field import fft, ifft, fftshift
@@ -258,41 +259,14 @@ OPENCL_OPERATIONS = Template("""
 
 """)
 
-
-class OpenclFibre(object):
-    """
-    This optical module is similar to Fibre, but uses PyOpenCl (Python
-    bindings around OpenCL) to generate parallelised code.
-    method:
-        * cl_rk4ip
-        * cl_ss_symmetric
-        * cl_ss_sym_rk4
-    """
-    def __init__(self, name="ocl_fibre", length=1.0, alpha=None,
-                 beta=None, gamma=0.0, method="cl_ss_symmetric", total_steps=100,
-                 self_steepening=False, use_all=False, centre_omega=None,
-                 tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18,
-                 small_signal_gain=None, E_sat=None, lamb0=None, bandwidth=None, 
-                 use_Yb_model=False, Pp_0 = None, N = None, Rr=None,
-                 dorf='double', ctx=None, fast_math=False, save_represent="power", cycle='cycle0', traces=None, downsampling=500, dir=None):
-        self.dir = dir
-
-        self.name = name
-        self.cycle = cycle
-        self.domain = None
-
+class OpenclProgramm(object):
+    """" base program to work with GPU devices Openclfibre mus be initialised with this object """
+    def __init__(self, name="cl_programm", dorf='double', ctx=None, fast_math=False, use_all=False, downsampling=500):
+        self.cached_factor = False
         self.use_all = use_all
+        self.dorf = dorf
+        self.downsampling = downsampling
 
-        self.gamma = gamma
-        self.beta_2 = beta[2] if beta is not None else None
-        
-        self.nn_factor = None
-        self.buf_nn_factor = None
-        self.h_R = None
-        self.buf_h_R = None
-        self.omega = None
-        self.ss_factor = None            
-        
         self.queue = None
         self.np_float = None
         self.np_complex = None
@@ -300,7 +274,7 @@ class OpenclFibre(object):
         self.compiler_options = None
         self.fast_math = fast_math
         self.ctx = ctx
-        self.cl_initialise(dorf)
+        self.cl_initialise()
 
         self.plan = None
 
@@ -311,205 +285,22 @@ class OpenclFibre(object):
 
         self.buf_mod = None
         self.buf_conv = None
-
-        self.f_R = f_R
-        self.f_R_inv = 1.0 - f_R
+        self.buf_h_R = None
+        self.buf_nn_factor = None
 
         self.shape = None
-        self.plan = None
 
-        self.cached_factor = False
-        # Force usage of cached version of function:
-        self.cl_linear = self.cl_linear_cached
-
-        self.length = length
-        self.total_steps = total_steps
-        self.traces = traces if traces is not None else total_steps
-        self.downsampling = downsampling
-
-        self.stepsize = self.length / self.total_steps
-        self.zs = np.linspace(0.0, self.length, self.total_steps + 1)
-
-        self.method = getattr(self, method.lower())
-
-        if self.use_all:
-            if self_steepening is False:
-                self.cl_n = getattr(self, 'cl_n_with_all')
-            else:
-                self.cl_n = getattr(self, 'cl_n_with_all_and_ss')
-        elif self_steepening:
-            raise NotImplementedError("Self-steepening without general nonlinearity is not implemented")
-        else:
-            self.cl_n = getattr(self, 'cl_n_default')
-        
-        if (use_Yb_model):
-            self.amplifier = Amplifier2LevelModel(Pp=Pp_0, N=N, Rr=Rr, prg=self.prg, queue=self.queue, ctx=self.ctx, dorf=dorf)
-        else:
-            if (small_signal_gain is not None) and (E_sat is not None):
-                self.amplifier = Amplifier(
-                    gain=self.small_signal_gain, E_sat=E_sat, length=self.length, lamb0=lamb0, bandwidth=bandwidth, steps=total_steps)
-            elif (small_signal_gain is None) and (E_sat is None):
-                self.amplifier = None
-            else:
-                assert(FiberInitError(
-                    'Not enought parameters to initialise amplification fiber: both small_signal_gain and E_sat must be passed!'))
-                
-        self.linearity = Linearity(alpha, beta, sim_type="default",
-                                    use_cache=True, centre_omega=centre_omega, phase_lim=True, amplifier=self.amplifier)
-        self.nonlinearity = Nonlinearity(gamma, None, self_steepening,
-                                         False, 0,
-                                         use_all, tau_1, tau_2, f_R)
-        
-        # TODO: create local storage here too as it is done in fibre class
-
-        self.factor = None
-        self.energy_list = []
-        self.max_power_list = []
-        self.peaks_list = []
-
-        self.z_list = []
-        self.temp_field_list = []
-        self.spec_field_list = []
-        # self.complex_field_list = []
         self.power_buffer = None
         self.downsampled_power_buffer = None
         self.simpson_result = None
 
-    def __call__(self, domain, field):
-        # Setup plan for calculating fast Fourier transforms:
-        self.calculate_refrence_length(domain, field)
-        if self.stepsize > self.refrence_length * (10 ** (-2)):
-            warnings.warn(
-                f"{self.cycle}: {self.fibre_name}: h must be much less than dispersion length (L_D) and the nonlinear length (L_NL)\n        \
-                now the minimum of the characteristic distances is equal to {self.refrence_length:.6f}*km* \n         \
-                step is equal to {self.stepsize}*km*"
-            )
-
-        if self.plan is None:
-            if version_py == 3:
-                self.plan = FFT(domain.t.astype(self.np_complex)).compile(self.thr, 
-                        fast_math=self.fast_math, compiler_options=self.compiler_options)
-                self.plan.execute = self.reikna_fft_execute
-            else:
-                self.plan = Plan(domain.total_samples, queue=self.queue, dtype=self.np_complex, fast_math=self.fast_math)
-
-        if self.domain != domain:
-            self.domain = domain
-            if self.use_all:
-                self.nonlinearity(self.domain)
-                self.omega = self.nonlinearity.omega
-                self.h_R = self.nonlinearity.h_R
-                self.ss_factor = self.nonlinearity.ss_factor
-                if self.ss_factor != 0.0:
-                    self.nn_factor = 1.0 + self.omega * self.ss_factor
-                else:
-                    self.nn_factor = None
-
-        if self.factor is None:
-            self.factor = self.linearity(domain)
-
-        self.send_arrays_to_device(field, self.factor)
-
-        storage_step = int(self.total_steps / self.traces)
-
-        for i in range(len(self.zs[1:])):
-            self.method(self.buf_field, self.buf_temp,
-                          self.buf_interaction, self.buf_factor, self.stepsize)
-            
-            # Storage part
-            if (i % storage_step == 0):
-                self.prg.cl_power(self.queue, self.shape, None, self.buf_field.data, self.power_buffer.data)
-                self.prg.cl_interpolate(self.queue, tuple([self.downsampled_power_buffer.shape[0]]), None, self.power_buffer.data, self.np_float(self.power_buffer.shape[0]), self.downsampled_power_buffer.data, self.np_float(self.downsampled_power_buffer.shape[0]))
-                self.temp_field_list.append(self.downsampled_power_buffer.get())
-
-                self.plan.execute(self.buf_field.data, inverse=True)
-                self.prg.cl_power(self.queue, self.shape, None, self.buf_field.data, self.power_buffer.data)
-                self.plan.execute(self.buf_field.data)
-                self.prg.cl_fftshift(self.queue, self.shape, None, self.power_buffer.data, self.np_float(self.power_buffer.shape[0]))
-
-                self.prg.cl_interpolate(self.queue, tuple([self.downsampled_power_buffer.shape[0]]), None, self.power_buffer.data, self.np_float(self.power_buffer.shape[0]), self.downsampled_power_buffer.data, self.np_float(self.downsampled_power_buffer.shape[0]))
-                self.spec_field_list.append(self.downsampled_power_buffer.get())
-
-                # TODO: add saving complex field
-                # self.complex_field_list.append(self.buf_field.get())
-                self.z_list.append(self.zs[i+1])
-            
-        # gpu memory should be cleared here manualy all needed info is already loaded
-        self.clear_arrays_on_device()
-        return self.buf_field.get()
-    
-    def calculate_refrence_length(self, domain, field):
-        temp_power = abs(field) ** 2
-        d_t = abs(domain.t[1] - domain.t[0])
-        P_0 = np.amax(temp_power)
-        peaks, _ = find_peaks(temp_power, height=0)
-        results_half = peak_widths(temp_power, peaks, rel_height=1)
-        T_0 = d_t * np.amax(results_half[0])
-        if (self.beta_2 is not None):
-            self.L_D = T_0**2 / (10**3 * self.beta_2)
-        if (self.gamma is not None):
-            self.L_NL = 1 / (self.gamma * P_0)
-        if (self.L_NL and self.L_D is not None):
-            self.refrence_length = min(self.L_NL, self.L_D)
-        elif (self.L_NL or self.L_D is None):
-            self.refrence_length = None
-        else:
-            self.refrence_length = self.L_NL if self.L_D is None else self.L_D
-
-    #for usual fibre this info is in storage
-    def get_df(self, type = "complex", z_curr=0, channel=None):
-        if type == "temp":
-            y = self.temp_field_list
-        elif type == "spec":
-            y = self.spec_field_list   
-        elif type == "complex":
-            warnings.warn("Saving downsampled complex power has not been made yet!")
-        else:
-            raise ValueError()
-         
-        arr_z = np.array(self.z_list)*10**6 + z_curr # mm
-        if self.cycle and self.name is not None:
-            iterables = [[self.cycle], [self.name], arr_z]
-            index = pd.MultiIndex.from_product(
-                iterables,  names=["cycle", "fibre", "z [mm]"])
-        else:
-            iterables = [arr_z]
-            index = pd.MultiIndex.from_product(iterables, names=["z [mm]"])
-        return pd.DataFrame(y, index=index)           
-
-    #for usual fibre this info is in storage
-    def get_df_result(
-        self,
-        z_curr=0,
-    ):
-        z = self.zs[1:]
-
-        arr_z = np.array(z)*10**6 + z_curr
-        characteristic = ["max_value", "energy", "duration", "spec_width", "peaks"]
-        if self.cycle and self.name is not None:
-            iterables = [[self.cycle], [self.name], arr_z]
-            index = pd.MultiIndex.from_product(
-                iterables,  names=["cycle", "fibre", "z [mm]"])
-        else:
-            iterables = [arr_z]
-            index = pd.MultiIndex.from_product(iterables, names=["z [mm]"])
-
-        df_results = pd.DataFrame(index=index, columns=characteristic)
-        df_results["max_value"] = self.max_power_list
-        df_results["energy"] = self.energy_list
-        # duration and spec width are not calculated in OpenclFibre
-        # df_results["duration"] = self.duration_list   
-        # df_results["spec_width"] = self.spec_width_list
-        # df_results["peaks"] = self.peaks_list
-        return df_results
-
-    def cl_initialise(self, dorf="float"):
+    def cl_initialise(self):
         """ Initialise opencl related parameters. """
         float_conversions = {"float": np.float32, "double": np.float64}
         complex_conversions = {"float": np.complex64, "double": np.complex128}
 
-        self.np_float = float_conversions[dorf]
-        self.np_complex = complex_conversions[dorf]
+        self.np_float = float_conversions[self.dorf]
+        self.np_complex = complex_conversions[self.dorf]
 
         for platform in cl.get_platforms():
             if platform.name == "NVIDIA CUDA" and self.fast_math is True:
@@ -526,33 +317,20 @@ class OpenclFibre(object):
             api = cluda.ocl_api()
             self.thr = api.Thread(self.queue)
 
-        substitutions = {"dorf": dorf}
+        substitutions = {"dorf": self.dorf}
         code = OPENCL_OPERATIONS.substitute(substitutions)
         self.prg = cl.Program(self.ctx, code).build(options=self.compiler_options)
 
-    @staticmethod
-    def print_device_info():
-        """ Output information on each OpenCL platform and device. """
-        for platform in cl.get_platforms():
-            print("=" * 60)
-            print("Platform information:")
-            print("Name: ", platform.name)
-            print("Profile: ", platform.profile)
-            print("Vender: ", platform.vendor)
-            print("Version: ", platform.version)
+    def set_domain(self, domain):
+        if self.plan is None:
+            if version_py == 3:
+                self.plan = FFT(domain.t.astype(self.np_complex)).compile(self.thr, 
+                        fast_math=self.fast_math, compiler_options=self.compiler_options)
+                self.plan.execute = self.reikna_fft_execute
+            else:
+                self.plan = Plan(domain.total_samples, queue=self.queue, dtype=self.np_complex, fast_math=self.fast_math)
 
-            for device in platform.get_devices():
-                print("-" * 60)
-                print("Device information:")
-                print("Name: ", device.name)
-                print("Type: ", cl.device_type.to_string(device.type))
-                print("Memory: ", device.global_mem_size // (1024 ** 2), "MB")
-                print("Max clock speed: ", device.max_clock_frequency, "MHz")
-                print("Compute units: ", device.max_compute_units)
-
-            print("=" * 60)
-
-    def send_arrays_to_device(self, field, factor):
+    def send_arrays_to_device(self, field, factor, h_R, nn_factor):
         """ Move numpy arrays onto compute device. """
         self.shape = field.shape
 
@@ -574,10 +352,10 @@ class OpenclFibre(object):
         if self.use_all:
             if self.buf_h_R is None:
                 self.buf_h_R = cl_array.to_device(
-                                        self.queue, self.h_R.astype(self.np_complex))
-            if self.buf_nn_factor is None and self.nn_factor is not None:
+                                        self.queue, h_R.astype(self.np_complex))
+            if self.buf_nn_factor is None and nn_factor is not None:
                 self.buf_nn_factor = cl_array.to_device(
-                                        self.queue, self.nn_factor.astype(self.np_complex))
+                                        self.queue, nn_factor.astype(self.np_complex))
             if self.buf_mod is None:
                 self.buf_mod = cl_array.empty_like(self.buf_field)
             if self.buf_conv is None:
@@ -587,29 +365,366 @@ class OpenclFibre(object):
             self.buf_factor = cl_array.to_device(
                 self.queue, factor.astype(self.np_complex))
             
+    def reikna_fft_execute(self, d, inverse=False):
+        self.plan(d,d,inverse=inverse)
+
+
+def get_device_memory_info():
+    nvmlInit()
+    handle = nvmlDeviceGetHandleByIndex(0)
+    info = nvmlDeviceGetMemoryInfo(handle)
+    print(f"device name {nvmlDeviceGetName(handle)}")
+    # print("Total memory: {} MiB".format(info.total >> 20))
+    # print("Free memory: {} MiB".format(info.free >> 20))
+    print("Used memory: {} MiB".format(info.used >> 20))
+    nvmlShutdown()
+
+class OpenclFibre(object):
+    """
+    This optical module is similar to Fibre, but uses PyOpenCl (Python
+    bindings around OpenCL) to generate parallelised code.
+    method:
+        * cl_rk4ip
+        * cl_ss_symmetric
+        * cl_ss_sym_rk4
+    """
+    def __init__(self, cl_programm, name="cl_fibre", length=1.0, alpha=None,
+                 beta=None, gamma=0.0, method="cl_ss_symmetric", total_steps=100,
+                 self_steepening=False, centre_omega=None,
+                 tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18,
+                 small_signal_gain=None, E_sat=None, lamb0=None, bandwidth=None, 
+                 use_Yb_model=False, Pp_0 = None, N = None, Rr=None, save_represent="power", cycle='cycle0', traces=None, dir=None, amplifier=None):
+        
+        self.cl_programm = cl_programm
+
+        self.dir = dir
+
+        self.name = name
+        self.cycle = cycle
+        self.domain = None
+
+        self.gamma = gamma
+        self.beta_2 = beta[2] if beta is not None else None
+        
+        self.f_R = f_R
+        self.f_R_inv = 1.0 - f_R
+
+        self.nn_factor = None
+        self.h_R = None
+        self.omega = None
+        self.ss_factor = None            
+        
+        # Force usage of cached version of function:
+        self.cl_linear = self.cl_linear_cached
+
+        self.length = length
+        self.total_steps = total_steps
+        self.traces = traces if traces is not None else total_steps
+
+        self.stepsize = self.length / self.total_steps
+        self.zs = np.linspace(0.0, self.length, self.total_steps + 1)
+
+        self.method = getattr(self, method.lower())
+
+        if self.use_all:
+            if self_steepening is False:
+                self.cl_n = getattr(self, 'cl_n_with_all')
+            else:
+                self.cl_n = getattr(self, 'cl_n_with_all_and_ss')
+        elif self_steepening:
+            raise NotImplementedError("Self-steepening without general nonlinearity is not implemented")
+        else:
+            self.cl_n = getattr(self, 'cl_n_default')
+        
+
+        if amplifier is not None:
+            self.amplifier = amplifier
+        else:
+            if use_Yb_model:
+                print('Use Yb model')
+                self.amplifier = Amplifier2LevelModel(Pp=Pp_0, N=N, Rr=Rr, prg=self.prg, queue=self.queue, ctx=self.ctx, dorf=self.dorf)
+            else:
+                if (small_signal_gain is not None) and (E_sat is not None):
+                    print('Use simple saturation model')
+                    self.amplifier = Amplifier(
+                        gain=small_signal_gain, E_sat=E_sat, length=self.length, lamb0=lamb0, bandwidth=bandwidth, steps=total_steps)
+                elif (small_signal_gain is None) and (E_sat is None):
+                    print('Passive fibre modulation')
+                    self.amplifier = None
+                else:
+                    assert(FiberInitError(
+                        'Not enought parameters to initialise amplification fiber: both small_signal_gain and E_sat must be passed!'))
+                
+        self.linearity = Linearity(alpha, beta, sim_type="default",
+                                    use_cache=True, centre_omega=centre_omega, phase_lim=True, amplifier=self.amplifier)
+        self.nonlinearity = Nonlinearity(gamma, None, self_steepening,
+                                         False, 0,
+                                         self.use_all, tau_1, tau_2, f_R)
+        
+        # TODO: create local storage here too as it is done in fibre class
+
+        self.factor = None
+        self.energy_list = []
+        self.max_power_list = []
+        self.peaks_list = []
+
+        self.z_list = []
+        self.temp_field_list = []
+        self.spec_field_list = []
+        # self.complex_field_list = []
+
+    @property
+    def dorf(self):    
+        return self.cl_programm.dorf
+
+    @property
+    def use_all(self):    
+        return self.cl_programm.use_all
+
+    @property
+    def queue(self):    
+        return self.cl_programm.queue
+
+    @property
+    def np_float(self):
+        return self.cl_programm.np_float
+
+    @property
+    def np_complex(self):
+        return self.cl_programm.np_complex
+
+    @property
+    def prg(self):
+        return self.cl_programm.prg
+
+    @property
+    def compiler_options(self):
+        return self.cl_programm.compiler_options
+
+    @property
+    def fast_math(self):    
+        return self.cl_programm.fast_math
+
+    @property
+    def ctx(self):
+        return self.cl_programm.ctx
+
+    @property
+    def plan(self):
+        return self.cl_programm.plan
+
+    @property
+    def buf_field(self):
+        return self.cl_programm.buf_field
+
+    @property
+    def buf_temp(self):
+        return self.cl_programm.buf_temp
+
+    @property
+    def buf_interaction(self):
+        return self.cl_programm.buf_interaction
+
+    @property
+    def buf_factor(self):
+        return self.cl_programm.buf_factor
+
+    @property
+    def buf_mod(self):
+        return self.cl_programm.buf_mod
+
+    @property
+    def buf_conv(self):
+        return self.cl_programm.buf_conv
+
+    @property
+    def shape(self):
+        return self.cl_programm.shape
+
+    @property
+    def power_buffer(self):
+        return self.cl_programm.power_buffer
+
+    @property
+    def downsampled_power_buffer(self):
+        return self.cl_programm.downsampled_power_buffer
+
+    @property
+    def simpson_result(self):
+        return self.cl_programm.simpson_result
+    
+    @property
+    def cached_factor(self):
+        return self.cl_programm.cached_factor
+    
+    @buf_factor.setter
+    def buf_factor(self, value):
+        self.cl_programm.buf_factor = value
+
+    @cached_factor.setter
+    def cached_factor(self, value):
+        self.cl_programm.cached_factor = value
+
+    def __call__(self, domain, field):
+        # Setup plan for calculating fast Fourier transforms:
+        get_device_memory_info()
+        self.calculate_refrence_length(domain, field)
+        if self.stepsize > self.refrence_length * (10 ** (-2)):
+            warnings.warn(
+                f"{self.cycle}: {self.name}: h must be much less than dispersion length (L_D) and the nonlinear length (L_NL)\n        \
+                now the minimum of the characteristic distances is equal to {self.refrence_length:.6f}*km* \n         \
+                step is equal to {self.stepsize}*km*"
+            )
+
+        if self.domain != domain:
+            self.domain = domain
+            if self.use_all:
+                self.nonlinearity(self.domain)
+                self.omega = self.nonlinearity.omega
+                self.h_R = self.nonlinearity.h_R
+                self.ss_factor = self.nonlinearity.ss_factor
+                if self.ss_factor != 0.0:
+                    self.nn_factor = 1.0 + self.omega * self.ss_factor
+                else:
+                    self.nn_factor = None
+
+        if self.factor is None:
+            self.factor = self.linearity(domain)
+
+        self.cl_programm.send_arrays_to_device(field, self.factor, self.h_R, self.nn_factor)
+
+        storage_step = int(self.total_steps / self.traces)      
+
+        for i in range(len(self.zs[1:])):
+            self.method(self.buf_field, self.buf_temp,
+                          self.buf_interaction, self.buf_factor, self.stepsize)
+            
+            # Storage part
+            if (i % storage_step == 0):
+                self.compute_characts(self.buf_field)
+                self.prg.cl_power(self.queue, self.shape, None, self.buf_field.data, self.power_buffer.data)
+                self.prg.cl_interpolate(self.queue, tuple([self.downsampled_power_buffer.shape[0]]), None, self.power_buffer.data, self.np_float(self.power_buffer.shape[0]), self.downsampled_power_buffer.data, self.np_float(self.downsampled_power_buffer.shape[0]))
+                self.temp_field_list.append(self.downsampled_power_buffer.get())
+
+                self.plan.execute(self.buf_field.data, inverse=True)
+                self.prg.cl_power(self.queue, self.shape, None, self.buf_field.data, self.power_buffer.data)
+                self.plan.execute(self.buf_field.data)
+                self.prg.cl_fftshift(self.queue, self.shape, None, self.power_buffer.data, self.np_float(self.power_buffer.shape[0]))
+
+                self.prg.cl_interpolate(self.queue, tuple([self.downsampled_power_buffer.shape[0]]), None, self.power_buffer.data, self.np_float(self.power_buffer.shape[0]), self.downsampled_power_buffer.data, self.np_float(self.downsampled_power_buffer.shape[0]))
+                self.spec_field_list.append(self.downsampled_power_buffer.get())
+
+                # TODO: add saving complex field
+                # self.complex_field_list.append(self.buf_field.get())
+                self.z_list.append(self.zs[i+1])
+            
+        # gpu memory should be cleared here manualy all needed info is already loaded
+        # self.clear_arrays_on_device()
+        return self.buf_field.get()
+    
+    def calculate_refrence_length(self, domain, field):
+        temp_power = abs(field) ** 2
+        d_t = abs(domain.t[1] - domain.t[0])
+        P_0 = np.amax(temp_power)
+        peaks, _ = find_peaks(temp_power, height=0)
+        results_half = peak_widths(temp_power, peaks, rel_height=1)
+        T_0 = d_t * np.amax(results_half[0])
+        if (self.beta_2 is not None):
+            self.L_D = T_0**2 / (10**3 * self.beta_2)
+        if (self.gamma is not None):
+            self.L_NL = 1 / (self.gamma * P_0)
+        if (self.L_NL and self.L_D is not None):
+            self.refrence_length = min(self.L_NL, self.L_D)
+        elif (self.L_NL or self.L_D is None):
+            self.refrence_length = None
+        else:
+            self.refrence_length = self.L_NL if self.L_D is None else self.L_D
+
+    # for usual fibre this info is in storage
+    def get_df(self, type = "complex", z_curr=0, channel=None):
+        if type == "temp":
+            y = self.temp_field_list
+        elif type == "spec":
+            y = self.spec_field_list   
+        elif type == "complex":
+            warnings.warn("Saving downsampled complex power has not been made yet!")
+        else:
+            raise ValueError()
+         
+        arr_z = np.array(self.z_list)*10**6 + z_curr # mm
+        if self.cycle and self.name is not None:
+            iterables = [[self.cycle], [self.name], arr_z]
+            index = pd.MultiIndex.from_product(
+                iterables,  names=["cycle", "fibre", "z [mm]"])
+        else:
+            iterables = [arr_z]
+            index = pd.MultiIndex.from_product(iterables, names=["z [mm]"])
+        return pd.DataFrame(y, index=index)           
+
+    # for usual fibre this info is in storage
+    def get_df_result(
+        self,
+        z_curr=0,
+    ):
+        z = np.linspace(0.0, self.length, self.traces + 1)[1:]
+
+        arr_z = np.array(z)*10**6 + z_curr
+        characteristic = ["max_value", "energy", "duration", "spec_width", "peaks"]
+        if self.cycle and self.name is not None:
+            iterables = [[self.cycle], [self.name], arr_z]
+            index = pd.MultiIndex.from_product(
+                iterables,  names=["cycle", "fibre", "z [mm]"])
+        else:
+            iterables = [arr_z]
+            index = pd.MultiIndex.from_product(iterables, names=["z [mm]"])
+
+        df_results = pd.DataFrame(index=index, columns=characteristic)
+        df_results["max_value"] = self.max_power_list
+        df_results["energy"] = self.energy_list
+        # duration and spec width are not calculated in OpenclFibre
+        # df_results["duration"] = self.duration_list   
+        # df_results["spec_width"] = self.spec_width_list
+        # df_results["peaks"] = self.peaks_list
+        return df_results
+
+    @staticmethod
+    def print_device_info():
+        """ Output information on each OpenCL platform and device. """
+        for platform in cl.get_platforms():
+            print("=" * 60)
+            print("Platform information:")
+            print("Name: ", platform.name)
+            print("Profile: ", platform.profile)
+            print("Vender: ", platform.vendor)
+            print("Version: ", platform.version)
+
+            for device in platform.get_devices():
+                print("-" * 60)
+                print("Device information:")
+                print("Name: ", device.name)
+                print("Type: ", cl.device_type.to_string(device.type))
+                print("Memory: ", device.global_mem_size // (1024 ** 2), "MB")
+                print("Max clock speed: ", device.max_clock_frequency, "MHz")
+                print("Compute units: ", device.max_compute_units)
+                if "NVIDIA" in device.vendor:
+                    free_mem = (device.global_mem_size - cl.Device.get_info(device, cl.device_info.GLOBAL_MEM_SIZE)) // (1024 ** 2)
+                else:
+                    free_mem = device.get_info(cl.device_info.GLOBAL_FREE_MEMORY_AMD) // (1024 ** 2)
+                print("Free global memory:", free_mem, "MB")
+                
+            print("=" * 60)
+            
     def cl_clear(self, cl_arr):
         if cl_arr is not None:
             if cl_arr.size > 0:
                 cl_arr.data.release()      
 
     def clear_arrays_on_device(self): 
-        mem_info = self.ctx.get_info(cl.context_info.DEVICES)[0].get_info(cl.device_info.GLOBAL_MEM_SIZE)
-        print("Global memory size:", mem_info)
-
-        self.cl_clear(self.buf_temp)
-        self.cl_clear(self.buf_interaction)
-        self.cl_clear(self.power_buffer)
-        self.cl_clear(self.simpson_result)
-        self.cl_clear(self.buf_h_R)
-        self.cl_clear(self.buf_nn_factor)
-        self.cl_clear(self.buf_mod)
-        self.cl_clear(self.buf_conv)
-        self.cl_clear(self.buf_factor)
+        get_device_memory_info()
         if self.amplifier:
             self.amplifier.clear_arrays_on_device()    
-        mem_info = self.ctx.get_info(cl.context_info.DEVICES)[0].get_info(cl.device_info.GLOBAL_MEM_SIZE)
-        #gc.collect()
-        print("Global memory size:", mem_info) #???? not changed
+            gc.collect()
+            get_device_memory_info()
     
         
     def cl_copy(self, dst_buffer, src_buffer):
@@ -731,9 +846,6 @@ class OpenclFibre(object):
         self.prg.cl_sum(self.queue, self.shape, None,
                         first_buffer.data, self.np_float(first_factor),
                         second_buffer.data, self.np_float(second_factor))
-
-    def reikna_fft_execute(self, d, inverse=False):
-        self.plan(d,d,inverse=inverse)
     
     def cl_ss_symmetric(self, field, field_temp, field_interaction, factor, stepsize):
         """ Symmetric split-step method using OpenCL"""
@@ -744,7 +856,6 @@ class OpenclFibre(object):
         self.cl_linear(field_temp, half_step, factor)
         self.cl_nonlinear(field, stepsize, field_temp)
         self.cl_linear(field, half_step, factor)
-        self.compute_characts(field)
     
     def cl_ss_sym_rk4(self, field, field_temp, field_linear, factor, stepsize):
         """ 

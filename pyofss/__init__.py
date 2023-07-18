@@ -30,7 +30,7 @@ from .domain import Domain
 from .modules.generator import Generator
 from .modules.gaussian import Gaussian
 from .modules.sech import Sech
-from .modules.amplifier import Amplifier
+from .modules.amplifier import Amplifier, Amplifier2LevelModel
 from .modules.bit import Bit, Bit_stream
 from .modules.fibre import Fibre
 from .modules.storage import reduce_to_range
@@ -53,7 +53,7 @@ from .modules.fibre_plotter import FibrePlotter
 from .modules.noise import Noise
 
 try:
-    from .modules.opencl_fibre import OpenclFibre
+    from .modules.opencl_fibre import OpenclFibre, OpenclProgramm
 except ImportError:
     print("OpenclFibre is not activated, check if pyopencl and reikna modules are installed")
 

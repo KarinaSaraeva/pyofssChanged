@@ -30,6 +30,7 @@ import numpy as np
 import pandas as pd
 import os
 import scipy.integrate as integrate
+import psutil
 
 from .domain import Domain
 from .modules.fibre import Fibre
@@ -82,11 +83,12 @@ class System(object):
         if field is not None:
             self.field = field
 
+        self.charact_dir =None
+
         if charact_dir is not None:
             check_dir(charact_dir)
             self.charact_dir = charact_dir
         
-        self.charact_dir =None
 
     def clear(self, remove_modules=False):
         """
@@ -174,7 +176,8 @@ class System(object):
 
     def save_result_df_to_scv(self, dir):            
         check_dir(dir)
-        self.df_results.to_csv(os.path.join(dir, "laser_info.csv"))
+        if self.df_results is not None:
+            self.df_results.to_csv(os.path.join(dir, "laser_info.csv"))
 
     def run(self):
         """
@@ -183,7 +186,10 @@ class System(object):
         """
         self.field = byte_align(self.field)
         for module in self.modules:
+            print(module.name)
             self.field = module(self.domain, self.field)
+            print(f"module run: {psutil.virtual_memory().used >> 20} MiB, free: {psutil.virtual_memory().free >> 20} MiB")
             self.fields[module.name] = self.field
             self.update_result_df(module)
-            # self.save_result_df_to_scv(self.charact_dir)
+            print(f"results updated: {psutil.virtual_memory().used >> 20} MiB, free: {psutil.virtual_memory().free >> 20} MiB")
+            self.save_result_df_to_scv(self.charact_dir)

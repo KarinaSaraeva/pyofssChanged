@@ -41,6 +41,13 @@ class DirExistenceError(StorageError):
 class DifferentAxisError(StorageError):
     pass
 
+class SavingWarning(Warning):
+    pass
+
+class InvalidArgumentError(StorageError):
+    """Raised when the type argument is not valid"""
+    pass
+
 
 def reduce_to_range(x, ys, first_value, last_value):
     """
@@ -174,6 +181,11 @@ class Storage(object):
         self.update_characts(A)
 
     def update_characts(self, A):
+        """" 
+        :param array_like A: Field at distance z
+        
+        updates the list of pulse characteristics appending new items to the characteristics lists 
+        """
         def get_peaks(P):
             peaks, _ = find_peaks(P, height=0, prominence=(np.amax(P)/10))
             return peaks
@@ -195,6 +207,11 @@ class Storage(object):
         save_power = True,
         channel=None,
     ):
+        """
+        :param boolean save_power: flag to save either the complex field as one dataframe or to save temporal and spectral intensity dataframes
+        
+        saves all field evolution along the fibre propagation 
+        """
         if self.dir is not None:
             if save_power:
                 dir_temp = os.path.join(dir, "temp")
@@ -222,14 +239,9 @@ class Storage(object):
             with open(file_name_info, 'w') as f:
                 f.write(f"current cycle: {self.cycle}, current fibre: {self.fibre_name}")
         else:
-            warnings.warn("Nothing will be saved - base fibre directory is not stated!")
+            warnings.warn("Nothing will be saved - the base fibre directory is not stated!", SavingWarning)
 
-    def get_df(
-        self,
-        type = "complex",
-        z_curr=0,
-        channel=None,
-    ):
+    def get_df(self, type = "complex", z_curr=0, channel=None):
         if type == "temp":
             x, y, z = self.get_plot_data(is_temporal=True)
         elif type == "spec":
@@ -238,7 +250,7 @@ class Storage(object):
             y = self.As
             z = self.z
         else:
-            raise ValueError()
+            raise InvalidArgumentError(f"{type} is not a valid argument, type param can be 'temp', 'spec' or 'complex'")
 
         arr_z = np.array(z)*10**6 + z_curr # mm
         if self.cycle and self.fibre_name is not None:
