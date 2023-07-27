@@ -82,7 +82,10 @@ class Storage(object):
         
         self.length = length
         self.traces = traces
-        if self.traces == 1:
+        self.trace_zs = []
+        if self.traces < 1:
+            self.trace_zs = 2*[length]
+        elif self.traces == 1:
             self.trace_zs = [length]
         else:
             self.trace_zs = np.linspace(0.0, self.length, self.traces + 1)
@@ -123,9 +126,12 @@ class Storage(object):
         Append current fibre distance and field to stored array
         """
         #Проверяем, совпадает ли текущая длина с точкой сохранения
-        #если совпадает, сохраняем поле, переходим к следующем точке сохранения
+        #если совпадает, сохраняем поле, переходим к следующей точке сохранения
         #и обнуляем буффер
-        if math.isclose(self.trace_zs[self.trace_n], z):
+        if self.traces < 1:
+            self.z.append(z)
+            self.As.append(A)
+        elif math.isclose(self.trace_zs[self.trace_n], z):
             self.trace_n += 1
             
             self.z.append(z)
@@ -240,11 +246,11 @@ class Storage(object):
         Interpolate array of A values, stored at non-uniform z-values, over a
         uniform array of new z-values (zs).
         """
-        from scipy.interpolate import barycentric_interpolate
+        from scipy.interpolate import barycentric_interpolate, pchip_interpolate
         As = np.array(As)
         if As[0].dtype.name.startswith('complex'):
-            As1_r = barycentric_interpolate(self.buff_z, np.real(As), zs)
-            As1_i = barycentric_interpolate(self.buff_z, np.imag(As), zs)
+            As1_r = pchip_interpolate(self.buff_z, np.real(As), zs)
+            As1_i = pchip_interpolate(self.buff_z, np.imag(As), zs)
             As = As1_r + 1j*As1_i
         else:
             As = barycentric_interpolate(self.buff_z, As, zs)

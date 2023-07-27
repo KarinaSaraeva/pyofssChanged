@@ -182,10 +182,12 @@ class Stepper(object):
         z = 0.0
 
         # Require an initial step-size which will be adapted by the routine:
-        if self.traces > self.total_steps:
-            h = self.length / self.traces
-        else:
-            h = self.length / self.total_steps
+        #-------------TRACE------------------------
+        #if self.traces > self.total_steps:
+        #    h = self.length / self.traces
+        #else:
+        #    h = self.length / self.total_steps
+        h = self.length / self.total_steps
 
         # Constants used for approximation of solution using local
         # extrapolation:
@@ -194,14 +196,16 @@ class Stepper(object):
         f_beta = 1.0 / (f_eta - 1.0)
 
         # Calculate z-values at which to save traces.
-        if self.traces > 1:
+        #-------------TRACE------------------------
+        #if self.traces > 1:
             # zs contains z-values for each trace, as well as the initial
             # trace:
-            zs = np.linspace(0.0, self.length, self.traces + 1)
+            #zs = np.linspace(0.0, self.length, self.traces + 1)
 
         # Store initial trace:
-        if self.traces != 1:
-            self.storage.append(z, self.A_out)
+        #-------------TRACE------------------------
+        #if self.traces != 1:
+        self.storage.append(z, self.A_out)
 
         # Limit the number of steps in case of slowly converging runs:
         for s in range(1, self.steps_max):
@@ -259,11 +263,12 @@ class Stepper(object):
                     # Store data on current z and stepsize used for each
                     # succesful step:
                     self.storage.step_sizes.append((z, h_temp))
+                    #print(z, h_temp, len(self.storage.step_sizes))
 
                     # Most dense storage (stores a trace for each successful
                     # step):
-                    if self.traces != 1:
-                        self.storage.append(z, self.A_out)
+                    #-------------TRACE------------------------
+                    self.storage.append(z, self.A_out)
 
                     break  # Successful attempt at step, move on to next step.
 
@@ -282,8 +287,9 @@ class Stepper(object):
                 self.storage.store_current_fft_count()
 
                 # Interpolate dense output to uniformly-spaced z values:
-                if self.traces > 1:
-                    self.storage.interpolate_As_for_z_values(zs)
+                #-------------TRACE------------------------
+                #if self.traces > 1:
+                #    self.storage.interpolate_As_for_z_values(zs)
 
                 return self.A_out
 
@@ -300,26 +306,42 @@ if __name__ == "__main__":
     Numerical solution (RKF, total_steps = 5):      0.71669606109336026
     Numerical solution (RKF, total_steps = 50):     0.71669567807672185
     Numerical solution (RKF, total_steps = 500):    0.71669567807368773
+    Numerical solution (ARK4, local_error = 1e-10): 0.716695678077511 (38 steps)
     """
+
     import matplotlib.pyplot as plt
+    import time
 
     def simple(A, z):
         """ Just a simple function. """
-        return 3.0 * np.exp(-4.0 * z) - 2.0 * A
+        #return 3.0 * np.exp(-4.0 * z) - 2.0 * A
+        return 30.0 * np.exp(-16.0 * z) - 2.0 * A + 4*z
+        
+    def solution(z):
+        return 0.5 * ( 5.0 * np.exp(-2.0 * z) - 3.0 * np.exp(-4.0 * z) )
 
-    stepper = Stepper(f=simple, length=0.5, total_steps=50,
-                      method="RKF", traces=50)
+    L = 2.5
+    stepper = Stepper(f=simple, local_error=1.0e-8, length=L, total_steps=100,
+                      method="ARK4", traces=10)
     A_in = 1.0
+
+    start = time.time()
     A_out = stepper(A_in)
-    print("A_out = %.17f" % (A_out))
+    stop = time.time()
+
+    print(f"Run time: {stop-start}")
+
+    A_fine = solution(L)
+    print(f"A_out = {A_out}")
+    print(f"A_fine = {A_fine}")
 
     x = stepper.storage.z
     y = stepper.storage.As
 
     title = r'$\frac{dA}{dz} + 2A = 3 e^{-4z}$'
-    plt.title(r'Numerical integration of ODE:' + title)
     plt.xlabel('z')
     plt.ylabel('A(z)')
-    plt.plot(x, y, label='RKF: 50 steps')
+    plt.plot(x, y, '.-', label='AS')
     plt.legend()
-    plt.show()
+    #plt.show()
+    plt.savefig('adapt')
