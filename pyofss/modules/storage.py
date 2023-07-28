@@ -125,20 +125,20 @@ class Storage(object):
 
         Append current fibre distance and field to stored array
         """
-        #Проверяем, совпадает ли текущая длина с точкой сохранения
-        #если совпадает, сохраняем поле, переходим к следующей точке сохранения
-        #и обнуляем буффер
         if self.traces < 1:
             self.z.append(z)
             self.As.append(A)
+        #Проверяем, совпадает ли текущая длина с точкой сохранения
+        #если совпадает, сохраняем поле, переходим к следующей точке сохранения
+        #и добавляем в буффер
         elif math.isclose(self.trace_zs[self.trace_n], z):
             self.trace_n += 1
             
             self.z.append(z)
             self.As.append(A)
             
-            self.buff_z = []
-            self.buff_As = []
+            self.buff_z = [z]
+            self.buff_As = [A]
         #если не совпадает, проверяем, не прошли ли точку сохранения
         #если прошли, далаем интерполяцию на основе буффера
         #сохраняем последние значения из него и переходим к след. точке сохранения
@@ -146,7 +146,11 @@ class Storage(object):
             self.buff_z.append(z)
             self.buff_As.append(A)
 
-            self.interpolate_As_for_z_values(self.trace_zs[self.trace_n])
+			#проверяем, есть ли ещё точки сохранения, которые мы перешагнули
+            zs = [zs for zs in self.trace_zs[self.trace_n: ] if zs < z]
+            self.trace_n = np.where(np.isclose(self.trace_zs,zs[-1]))[0][0]
+            
+            self.interpolate_As_for_z_values(zs)
             
             self.buff_z = [self.buff_z[-1]]
             self.buff_As = [self.buff_As[-1]]
@@ -231,10 +235,10 @@ class Storage(object):
             # Interleave elements from both channels into a single array:
             self.As = list(zip(As_c0, As_c1))
         else:
-            self.As.append(self.interpolate_As(zs, self.buff_As))
+            self.As.extend(self.interpolate_As(zs, self.buff_As))
 
         # Finished using original z; can now overwrite with new values (zs):
-        self.z.append(zs)
+        self.z.extend(zs)
 
     def interpolate_As(self, zs, As):
         """
@@ -249,8 +253,8 @@ class Storage(object):
         from scipy.interpolate import barycentric_interpolate, pchip_interpolate
         As = np.array(As)
         if As[0].dtype.name.startswith('complex'):
-            As1_r = pchip_interpolate(self.buff_z, np.real(As), zs)
-            As1_i = pchip_interpolate(self.buff_z, np.imag(As), zs)
+            As1_r = barycentric_interpolate(self.buff_z, np.real(As), zs)
+            As1_i = barycentric_interpolate(self.buff_z, np.imag(As), zs)
             As = As1_r + 1j*As1_i
         else:
             As = barycentric_interpolate(self.buff_z, As, zs)
