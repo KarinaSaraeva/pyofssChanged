@@ -174,6 +174,10 @@ class Stepper(object):
 
     def adaptive_stepper(self, A):
         """ Take multiple steps, with variable length, until target reached """
+        
+        #### Статья, где хорошо объясняется адпативный шаг, а также
+        #### исследуется его модифицированая версия:
+        #### DOI:10.1109/JLT.2009.2021538
 
         #~print( "Starting ODE integration with adaptive step-size... " ),
 

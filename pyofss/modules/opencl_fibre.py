@@ -422,6 +422,10 @@ class OpenclFibre(object):
 
     def adaptive_stepper(self, field):
         
+        #### Статья, где хорошо объясняется адпативный шаг, а также
+        #### исследуется его модифицированая версия:
+        #### DOI:10.1109/JLT.2009.2021538
+        
         # Constants used for approximation of solution using local
         # extrapolation:
         f_eta = np.power(2, self.eta - 1.0)
