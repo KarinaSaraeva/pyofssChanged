@@ -37,6 +37,7 @@ from string import Template
 
 from .linearity import Linearity
 from .nonlinearity import Nonlinearity
+from .storage import Storage
 
 OPENCL_OPERATIONS = Template("""
     #ifdef cl_khr_fp64 // Khronos extension
@@ -251,7 +252,7 @@ class OpenclFibre(object):
                  centre_omega=None, dorf='float', ctx=None, fast_math=False,
                  use_all = False, self_steepening=False, f_R = 0.18,
                  local_error=1.0e-6,
-                 channels = 1):
+                 channels = 1, traces = 1):
 
         self.name = name
         
@@ -306,6 +307,10 @@ class OpenclFibre(object):
 
         self.stepsize = self.length / self.total_steps
         self.zs = np.linspace(0.0, self.length, self.total_steps + 1)
+        
+        # Use a list of tuples ( z, A(z) ) for dense output if required:
+        self.traces = traces
+        self.storage = Storage(self.length, self.traces)
         
         # Check if adaptive stepsize is required:
         if method.upper().startswith('A'):
@@ -377,6 +382,9 @@ class OpenclFibre(object):
             else:
                 self.factor = factor
 
+        self.storage.nu = domain.nu
+        self.storage.append(0.0, field)
+
         if self.adaptive:
             return self.adaptive_stepper(field)
         else:
@@ -418,6 +426,7 @@ class OpenclFibre(object):
         for z in self.zs[:-1]:
             self.method(self.buf_field, self.buf_temp,
                           self.buf_interaction, self.buf_factor, self.stepsize)
+            self.storage.append(z + self.stepsize, self.buf_field)
         return self.buf_field.get()
 
     def adaptive_stepper(self, field):
@@ -488,6 +497,8 @@ class OpenclFibre(object):
                     z += h_temp
 
                     self.buf_field = self.buf_fine.mul_add(f_alpha, self.buf_coarse, -f_beta)
+                    
+                    self.storage.append(z, self.buf_field)
                     self.step_sizes.append(h_temp)
                     self.z_adapt.append(z)
                     

@@ -27,6 +27,8 @@ from pyofss import field
 from pyofss.field import temporal_power
 from pyofss.field import spectral_power
 
+import pyopencl.array as pycl_array
+
 
 
 def reduce_to_range(x, ys, first_value, last_value):
@@ -117,6 +119,12 @@ class Storage(object):
     def store_current_fft_count(self):
         """ Store current value of the global variable in the field module. """
         self.fft_total = field.fft_counter
+        
+    def get_A(self, A):
+        if isinstance(A, pycl_array.Array):
+                return A.get()
+        else:
+            return A
 
     def append(self, z, A):
         """
@@ -127,7 +135,7 @@ class Storage(object):
         """
         if self.traces < 1:
             self.z.append(z)
-            self.As.append(A)
+            self.As.append(self.get_A(A))
         #Проверяем, совпадает ли текущая длина с точкой сохранения
         #если совпадает, сохраняем поле, переходим к следующей точке сохранения
         #и добавляем в буффер
@@ -135,18 +143,18 @@ class Storage(object):
             self.trace_n += 1
             
             self.z.append(z)
-            self.As.append(A)
+            self.As.append(self.get_A(A))
             
             self.buff_z = [z]
-            self.buff_As = [A]
+            self.buff_As = [self.get_A(A)]
         #если не совпадает, проверяем, не прошли ли точку сохранения
         #если прошли, далаем интерполяцию на основе буффера
         #сохраняем последние значения из него и переходим к след. точке сохранения
         elif self.trace_zs[self.trace_n] < z:
             self.buff_z.append(z)
-            self.buff_As.append(A)
+            self.buff_As.append(self.get_A(A))
 
-			#проверяем, есть ли ещё точки сохранения, которые мы перешагнули
+            #проверяем, есть ли ещё точки сохранения, которые мы перешагнули
             zs = [zs for zs in self.trace_zs[self.trace_n: ] if zs < z]
             self.trace_n = np.where(np.isclose(self.trace_zs,zs[-1]))[0][0]
             
@@ -160,7 +168,7 @@ class Storage(object):
         #и идём дальше
         elif self.traces != 1:
             self.buff_z.append(z)
-            self.buff_As.append(A)
+            self.buff_As.append(self.get_A(A))
      
     def get_plot_data(self, is_temporal=True, reduced_range=None,
                       normalised=False, channel=None):
