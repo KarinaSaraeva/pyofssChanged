@@ -30,7 +30,6 @@ import numpy as np
 import pandas as pd
 import os
 import scipy.integrate as integrate
-import psutil
 
 from .domain import Domain
 from .modules.fibre import Fibre
@@ -76,6 +75,7 @@ class System(object):
         self.clear(remove_modules=True)
         
         self.df_results = None
+        self.df_fields = None
         df_temp, df_spec, df_complex = None, None, None
         self.df_type_dict = {"temp": df_temp, "spec": df_spec, "complex": df_complex}
         self.z_curr = 0
@@ -83,11 +83,11 @@ class System(object):
         if field is not None:
             self.field = field
 
-        self.charact_dir =None
-
-        if charact_dir is not None:
-            check_dir(charact_dir)
-            self.charact_dir = charact_dir
+        self.charact_dir = charact_dir
+        
+        if self.charact_dir is not None:
+            check_dir(self.charact_dir)
+        
         
 
     def clear(self, remove_modules=False):
@@ -178,18 +178,40 @@ class System(object):
         check_dir(dir)
         if self.df_results is not None:
             self.df_results.to_csv(os.path.join(dir, "laser_info.csv"))
+        
+    def update_fields_df(self, df_field_new):        
+        if self.df_fields is None: 
+            self.df_fields = df_field_new
+        else:
+            self.df_fields = pd.concat([self.df_fields, df_field_new])
 
+    def save_fields_df_to_scv(self, dir):            
+        check_dir(dir)
+        if self.df_fields is not None:
+            self.df_fields.to_csv(os.path.join(dir, "fields.csv"))
+            
     def run(self):
         """
         Propagate field through each module, with the resulting field at the
         exit of each module stored in a dictionary, with module name as key.
-        """
+        """        
+        
         self.field = byte_align(self.field)
         for module in self.modules:
             print(module.name)
             self.field = module(self.domain, self.field)
-            print(f"module run: {psutil.virtual_memory().used >> 20} MiB, free: {psutil.virtual_memory().free >> 20} MiB")
             self.fields[module.name] = self.field
             self.update_result_df(module)
-            print(f"results updated: {psutil.virtual_memory().used >> 20} MiB, free: {psutil.virtual_memory().free >> 20} MiB")
-            self.save_result_df_to_scv(self.charact_dir)
+            
+            if hasattr(module,'cycle'):
+                if module.cycle and module.name is not None:
+                    iterables = [[module.cycle], [module.name]]
+                    index = pd.MultiIndex.from_product(
+                        iterables,  names=["cycle", "fibre"])
+                    self.update_fields_df(pd.DataFrame([self.field], index=index) ) 
+                    self.save_fields_df_to_scv(self.charact_dir)
+                
+            if (module.name == "splitter_2" and self.charact_dir):
+                print("new characts are saved")
+                self.save_result_df_to_scv(self.charact_dir)
+        

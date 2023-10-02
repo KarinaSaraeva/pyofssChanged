@@ -333,10 +333,14 @@ class OpenclProgramm(object):
     def send_arrays_to_device(self, field, factor, h_R, nn_factor):
         """ Move numpy arrays onto compute device. """
         self.shape = field.shape
-
-        self.buf_field = cl_array.to_device(
-            self.queue, field.astype(self.np_complex))
-
+        self.cached_factor = False
+        if self.buf_field is None:
+            self.buf_field = cl_array.to_device(
+                self.queue, field.astype(self.np_complex))
+        else:
+            print("reset")
+            self.buf_field.set(field.astype(self.np_complex))
+            
         if self.buf_temp is None:
             self.buf_temp = cl_array.empty_like(self.buf_field)
         if self.buf_interaction is None:
@@ -353,18 +357,23 @@ class OpenclProgramm(object):
             if self.buf_h_R is None:
                 self.buf_h_R = cl_array.to_device(
                                         self.queue, h_R.astype(self.np_complex))
+            else:
+                self.buf_h_R.set(h_R.astype(self.np_complex)) 
             if self.buf_nn_factor is None and nn_factor is not None:
                 self.buf_nn_factor = cl_array.to_device(
                                         self.queue, nn_factor.astype(self.np_complex))
+            elif nn_factor is not None:
+                 self.buf_nn_factor.set(nn_factor.astype(self.np_complex))     
             if self.buf_mod is None:
                 self.buf_mod = cl_array.empty_like(self.buf_field)
             if self.buf_conv is None:
                 self.buf_conv = cl_array.empty_like(self.buf_field)
-
         if self.cached_factor is False:
-            self.buf_factor = cl_array.to_device(
-                self.queue, factor.astype(self.np_complex))
-            
+            if self.buf_factor is None:
+                self.buf_factor = cl_array.to_device(
+                    self.queue, factor.astype(self.np_complex))
+            else:
+                self.buf_factor.set(factor.astype(self.np_complex)) 
     def reikna_fft_execute(self, d, inverse=False):
         self.plan(d,d,inverse=inverse)
 
@@ -557,6 +566,10 @@ class OpenclFibre(object):
     def cached_factor(self):
         return self.cl_programm.cached_factor
     
+    @property
+    def buf_h_R(self):
+        return self.cl_programm.buf_h_R
+    
     @buf_factor.setter
     def buf_factor(self, value):
         self.cl_programm.buf_factor = value
@@ -598,10 +611,8 @@ class OpenclFibre(object):
         for i in range(len(self.zs[1:])):
             self.method(self.buf_field, self.buf_temp,
                           self.buf_interaction, self.buf_factor, self.stepsize)
-            
             # Storage part
             if (i % storage_step == 0):
-                self.compute_characts(self.buf_field)
                 self.prg.cl_power(self.queue, self.shape, None, self.buf_field.data, self.power_buffer.data)
                 self.prg.cl_interpolate(self.queue, tuple([self.downsampled_power_buffer.shape[0]]), None, self.power_buffer.data, self.np_float(self.power_buffer.shape[0]), self.downsampled_power_buffer.data, self.np_float(self.downsampled_power_buffer.shape[0]))
                 self.temp_field_list.append(self.downsampled_power_buffer.get())
@@ -617,6 +628,7 @@ class OpenclFibre(object):
                 # TODO: add saving complex field
                 # self.complex_field_list.append(self.buf_field.get())
                 self.z_list.append(self.zs[i+1])
+                self.compute_characts(self.buf_field)
             
         # gpu memory should be cleared here manualy all needed info is already loaded
         # self.clear_arrays_on_device()
@@ -666,7 +678,7 @@ class OpenclFibre(object):
         self,
         z_curr=0,
     ):
-        z = np.linspace(0.0, self.length, self.traces + 1)[1:]
+        z = self.z_list
 
         arr_z = np.array(z)*10**6 + z_curr
         characteristic = ["max_value", "energy", "duration", "spec_width", "peaks"]
@@ -761,7 +773,7 @@ class OpenclFibre(object):
             self.buf_factor = cl_array.to_device(
                 self.queue, self.linearity.cached_factor.astype(self.np_complex))
             self.cached_factor = True
-        
+            
         if self.amplifier is None:
             self.plan.execute(field_buffer.data, inverse=True)
             self.prg.cl_linear_cached(self.queue, self.shape, None,
@@ -850,7 +862,6 @@ class OpenclFibre(object):
     def cl_ss_symmetric(self, field, field_temp, field_interaction, factor, stepsize):
         """ Symmetric split-step method using OpenCL"""
         half_step = 0.5 * stepsize
-        
         self.cl_copy(field_temp, field)
 
         self.cl_linear(field_temp, half_step, factor)

@@ -310,7 +310,7 @@ class Amplifier2LevelModel(AmplifierBase):
         numerator = self.ratio_p * self.Pp / self.Psat_p + np.sum((lambda x: x[~np.isnan(x)])(self.ratio_s * Ps / self.Psat_s))
         denominator = 1 + self.Pp / self.Psat_p + np.sum((lambda x: x[~np.isnan(x)])(Ps / self.Psat_s))
         N2 = (numerator/denominator) * self.N
-        self.inversion_factor_list.append(numerator/denominator)
+        # self.inversion_factor_list.append(numerator/denominator)
         return N2
     
     def calculate_g_s(self, N2):
@@ -352,7 +352,7 @@ class Amplifier2LevelModel(AmplifierBase):
         numerator = self.ratio_p * temp_p + cl.array.sum(temp_arr_s, queue=self.queue).get()
         inversion_factor = numerator/denominator
         N2 = inversion_factor * self.N
-        self.inversion_factor_list.append(inversion_factor)
+        # self.inversion_factor_list.append(inversion_factor)
         return N2
 
     def cl_exp_factor(self, A, h): 
