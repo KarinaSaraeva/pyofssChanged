@@ -209,7 +209,8 @@ class System(object):
                     index = pd.MultiIndex.from_product(
                         iterables,  names=["cycle", "fibre"])
                     self.update_fields_df(pd.DataFrame([self.field], index=index) ) 
-                    self.save_fields_df_to_scv(self.charact_dir)
+                    if (self.charact_dir is not None):
+                        self.save_fields_df_to_scv(self.charact_dir)
                 
             if (module.name == "splitter_2" and self.charact_dir):
                 print("new characts are saved")
