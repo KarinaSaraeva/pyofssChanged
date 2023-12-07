@@ -108,6 +108,7 @@ class Storage(object):
         self.fft_total = 0
 
     def reset_array(self):
+        self.trace_n = 0
         self.As = []
         self.z = []
 
