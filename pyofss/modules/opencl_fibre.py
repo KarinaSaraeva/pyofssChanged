@@ -383,6 +383,8 @@ class OpenclFibre(object):
                 self.factor = factor
 
         self.storage.nu = domain.nu
+        self.storage.reset_fft_counter()
+        self.storage.reset_array()
         self.storage.append(0.0, field)
 
         if self.adaptive:
