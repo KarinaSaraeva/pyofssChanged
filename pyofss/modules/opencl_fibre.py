@@ -234,6 +234,24 @@ OPENCL_OPERATIONS = Template("""
         int gid = get_global_id(0);
         g_s[gid] = exp((alpha_s[gid] * N2 - eta_s[gid])*h);
     }
+                             
+    __kernel void cl_multiply_array_by_factor(__global ${dorf}* array,
+                            const ${dorf} factor, __global ${dorf}* result) {
+        int gid = get_global_id(0);
+        result[gid] = array[gid]*factor;
+    }  
+
+    __kernel void cl_calculate_array_exponent(__global ${dorf}* array) {
+        int gid = get_global_id(0);
+        array[gid] = exp(array[gid]);
+    }
+
+    __kernel void cl_array_exponent_with_factor(__global ${dorf}* array,
+                            const ${dorf} factor, __global ${dorf}* result) {
+        int gid = get_global_id(0);
+
+        result[gid] = exp(array[gid]*factor);
+    }                                                 
 
     __kernel void multiply_array_by_another_const(__global ${dorf}* array1,
                             __global const ${dorf}* array2) {
@@ -373,7 +391,8 @@ class OpenclProgramm(object):
                 self.buf_factor = cl_array.to_device(
                     self.queue, factor.astype(self.np_complex))
             else:
-                self.buf_factor.set(factor.astype(self.np_complex)) 
+                self.buf_factor.set(factor.astype(self.np_complex))
+
     def reikna_fft_execute(self, d, inverse=False):
         self.plan(d,d,inverse=inverse)
 
@@ -457,7 +476,7 @@ class OpenclFibre(object):
                 if (small_signal_gain is not None) and (E_sat is not None or (P_sat is not None and Tr is not None)):
                     print('Use simple saturation model')
                     self.amplifier = Amplifier(
-                        gain=small_signal_gain, E_sat=E_sat, P_sat=P_sat, Tr=Tr, length=self.length, lamb0=lamb0, bandwidth=bandwidth, use_Er_profile=use_Er_profile)
+                        gain=small_signal_gain, E_sat=E_sat, P_sat=P_sat, Tr=Tr, length=self.length, lamb0=lamb0, bandwidth=bandwidth, use_Er_profile=use_Er_profile, prg=self.prg, queue=self.queue, ctx=self.ctx, dorf=self.dorf)
                 elif (small_signal_gain is None) and (E_sat is None):
                     print('Passive fibre modulation')
                     self.amplifier = None
@@ -760,6 +779,12 @@ class OpenclFibre(object):
         self.max_power_list.append(max_power.get())
         #self.peaks_list.append(get_peaks(power_buffer_cpu, max_power/10)) # cant be paralleled
 
+    def get_energy(self, field):
+        self.prg.cl_power(self.queue, self.shape, None, field.data, self.power_buffer.data)
+        self.prg.cl_simpson(self.queue, tuple([self.shape[0] - 2]), None, self.power_buffer.data, self.simpson_result.data, self.np_float(self.domain.dt*1e-3))
+        energy = cl.array.sum(self.simpson_result, queue=self.queue)
+        return energy
+
     def cl_linear(self, field_buffer, stepsize, factor_buffer):
         """ Linear part of step. """
         self.plan.execute(field_buffer.data, inverse=True)
@@ -779,12 +804,20 @@ class OpenclFibre(object):
             self.plan.execute(field_buffer.data, inverse=True)
             self.prg.cl_linear_cached(self.queue, self.shape, None,
                                   field_buffer.data, self.buf_factor.data)
-        else:
+        elif type(self.amplifier) is Amplifier2LevelModel:
             self.plan.execute(field_buffer.data, inverse=True)
             self.amplifier.cl_exp_factor(field_buffer, stepsize)
             self.prg.cl_fftshift(self.queue, self.shape, None, self.amplifier.g_s_buffer.data, self.np_float(self.amplifier.g_s_buffer.shape[0]))
             self.prg.cl_linear_cached_with_amplification(self.queue, self.shape, None,
                                   field_buffer.data, self.buf_factor.data, self.amplifier.g_s_buffer.data)
+        elif type(self.amplifier) is Amplifier:
+            energy = self.get_energy(field_buffer)
+            self.plan.execute(field_buffer.data, inverse=True)
+            self.amplifier.cl_exp_factor(energy.get(), stepsize)  
+            self.prg.cl_linear_cached_with_amplification(self.queue, self.shape, None,
+                                  field_buffer.data, self.buf_factor.data, self.amplifier.g_buffer.data)
+        else:
+            raise ValueError
 
         self.plan.execute(field_buffer.data) 
 

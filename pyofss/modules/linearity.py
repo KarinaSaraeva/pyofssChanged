@@ -246,7 +246,7 @@ class Linearity(object):
             amp_factor = self.amplifier.factor(A, h)   
             field = ifft(np.multiply(np.exp(amp_factor), np.exp(hf) * fft(A)))
             if self.use_Er_noise:
-                self.gain_arr.append(ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)]) #!!!
+                self.gain_arr.append(ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)]) # TODO: remove
                 noise = self.get_Er_noise(A, ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)])  
                 field += noise
             return field
@@ -260,7 +260,7 @@ class Linearity(object):
             amp_factor = self.amplifier.factor(A, h)   
             field = ifft(np.multiply(np.exp(amp_factor), self.cached_factor * fft(A)))
             if self.use_Er_noise:
-                self.gain_arr.append(ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)]) #!!!
+                self.gain_arr.append(ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)]) # TODO: remove
                 noise = self.get_Er_noise(A, ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)])  
                 field += noise
             return field

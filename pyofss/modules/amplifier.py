@@ -53,7 +53,7 @@ class Amplifier(AmplifierBase):
     """
 
     def __init__(self, name="simple_saturation", gain=None,
-                 E_sat=None, P_sat=None, Tr=None, length=1.0, lamb0=None, bandwidth=None, use_Er_profile=False):
+                 E_sat=None, P_sat=None, Tr=None, length=1.0, lamb0=None, bandwidth=None, use_Er_profile=False, prg=None, queue=None, ctx=None, dorf="double"):
         self.length = length
         print(f"amplifier length equals {self.length}")
 
@@ -88,6 +88,20 @@ class Amplifier(AmplifierBase):
 
         self.use_Er_profile = use_Er_profile
 
+        self.prg = prg
+        self.queue = queue
+        self.ctx = ctx
+        self.np_float = None
+        float_conversions = {"float": np.float32, "double": np.float64}
+        self.np_float = float_conversions[dorf]
+
+    def prepare_arrays_on_device(self):
+        self.spectral_power_buffer = cl_array.zeros(self.queue, self.shape, self.np_float)   
+        self.g_buffer = cl_array.zeros(self.queue, self.shape, self.np_float)  
+
+    def send_array_to_device_const(self, array):
+        return cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.USE_HOST_PTR, hostbuf=array.astype(self.np_float))
+
     @property
     def spectal_filtration_array(self):
         try:
@@ -103,18 +117,37 @@ class Amplifier(AmplifierBase):
             else:
                 factorArray = np.ones(len(self.domain.Lambda))
 
-            DF = pd.DataFrame(np.column_stack((self.domain.Lambda, factorArray)), columns=["lambda [nm]", "gain"])
-            DF.to_csv(os.path.dirname(__file__) + "/../data/factor_arrray.csv")
+            # DF = pd.DataFrame(np.column_stack((self.domain.Lambda, factorArray)), columns=["lambda [nm]", "gain"])
+            # DF.to_csv(os.path.dirname(__file__) + "/../data/factor_arrray.csv")
 
             self._spectal_filtration_array = fftshift(factorArray)
+
             return self._spectal_filtration_array
+
+    @property
+    def gain_times_log(self):
+        try:
+            return self.gain_times
+        except:
+            gain_times = np.power(10, 0.1 * self.gain)
+            if self.use_Er_profile:
+                self.gain_times = self.spectal_filtration_array*gain_times
+            else:
+                self.gain_times = np.ones(self.shape)*np.power(10, 0.1 * self.gain)
+
+            self.gain_times = np.log(self.gain_times)
+
+            if self.prg:
+                self.gain_times = self.send_array_to_device_const(self.gain_times)
+
+            return self.gain_times
 
     def factor(self, A, h):
         """ amplification factor used in an exponent of a linearity step """
         if self.domain is None:
             raise Exception("Domain is not preset.")
 
-        gain_times = power(10, 0.1 * self.gain)
+        gain_times = np.power(10, 0.1 * self.gain)
         if self.use_Er_profile:
             gain_times *= self.spectal_filtration_array
         M = np.log(gain_times)
@@ -130,9 +163,23 @@ class Amplifier(AmplifierBase):
         if not self.use_Er_profile:
             factor *= self.spectal_filtration_array
         return factor
+    
+    def cl_exp_factor(self, energy, h):
+        """ amplification factor used in an exponent of a linearity step """
+        factor = h / (2*self.length*(1.0 + energy/self.E_sat))
+        
+        self.prg.cl_array_exponent_with_factor(self.queue, self.shape, None, self.gain_times_log, self.np_float(factor), self.g_buffer.data)
+
+        if not self.use_Er_profile:
+            self.prg.cl_multiply_array_by_factor(self.queue, self.shape, None, self.gain_times_log, self.np_float(factor), self.g_buffer.data)
+            self.prg.cl_multiply_array_by_another_const(self.queue, self.shape, None, self.g_buffer.data, self.spectal_filtration_array)
+        
 
     def set_domain(self, domain):
         self.domain = domain
+        self.shape = self.domain.nu.shape
+        if self.prg:
+            self.prepare_arrays_on_device()
 
 
 class Amplifier2LevelModel(AmplifierBase):
