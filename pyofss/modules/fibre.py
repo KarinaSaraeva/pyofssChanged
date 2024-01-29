@@ -75,7 +75,8 @@ class Fibre(object):
                  self_steepening=False, raman_scattering=False,
                  rs_factor=0.003, use_all=False, centre_omega=None,
                  tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18, 
-                 small_signal_gain=None, E_sat=None, lamb0=None, bandwidth=None, 
+                 small_signal_gain=None, E_sat=None, P_sat=None, Tr=None, lamb0=None, bandwidth=None, 
+                 use_Er_profile=False, use_Er_noise=False,
                  use_Yb_model=False, Pp_0 = None, N = None, Rr=None,
                  dir=None, save_represent="power", cycle=None):
 
@@ -95,17 +96,17 @@ class Fibre(object):
         if (use_Yb_model):
             self.amplifier = Amplifier2LevelModel(Pp=Pp_0, N=N, Rr=Rr)
         else:
-            if (small_signal_gain is not None) and (E_sat is not None):
+            if (small_signal_gain is not None) and (E_sat is not None or (P_sat is not None and Tr is not None)):
                 self.amplifier = Amplifier(
-                    gain=self.small_signal_gain, E_sat=E_sat, length=self.length, lamb0=lamb0, bandwidth=bandwidth, steps=total_steps)
+                    gain=self.small_signal_gain, E_sat=E_sat, P_sat=P_sat, Tr=Tr, length=self.length, lamb0=lamb0, bandwidth=bandwidth, use_Er_profile=use_Er_profile)
             elif (small_signal_gain is None) and (E_sat is None):
                 self.amplifier = None
             else:
                 assert(FiberInitError(
                     'Not enought parameters to initialise amplification fiber: both small_signal_gain and E_sat must be passed!'))
 
-        self.linearity = Linearity(alpha, beta, sim_type,
-                                   use_cache, centre_omega, amplifier=self.amplifier)
+        self.linearity = Linearity(alpha=alpha, beta=beta, sim_type=sim_type,
+                                   use_cache=use_cache, centre_omega=centre_omega, amplifier=self.amplifier, use_Er_noise=use_Er_noise)
         self.nonlinearity = Nonlinearity(gamma, sim_type, self_steepening,
                                          raman_scattering, rs_factor,
                                          use_all, tau_1, tau_2, f_R)
@@ -154,7 +155,8 @@ class Fibre(object):
         self.stepper.storage.nu = domain.nu
 
         # Propagate field through fibre:
-        return self.stepper(field, self.refrence_length)
+        field = self.stepper(field, self.refrence_length)
+        return field
 
     def l(self, A, z):
         """ Linear term. """

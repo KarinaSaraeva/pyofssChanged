@@ -27,8 +27,9 @@ except ImportError:  # try the old one for compatibility reson
 from scipy import log10, exp
 import numpy as np
 import pandas as pd
+from pyofss.field import fft, ifft, fftshift, ifftshift
 
-from pyofss.field import fft, ifft, fftshift
+from pyofss.field import fft, ifft, fftshift, temporal_power
 
 
 def convert_dispersion_to_physical(D=0.0, S=0.0, Lambda=1550.0):
@@ -116,7 +117,7 @@ class Linearity(object):
     """
     def __init__(self, alpha=None, beta=None, sim_type=None,
                  use_cache=False, centre_omega=None, phase_lim=False, 
-                 amplifier = None):
+                 amplifier = None, use_Er_noise=False):
 
         self.alpha = alpha
         self.beta = beta
@@ -124,6 +125,7 @@ class Linearity(object):
         self.phase_lim = phase_lim
 
         self.amplifier = amplifier
+        self.use_Er_noise = use_Er_noise
 
         self.generate_linearity = getattr(self, "%s_linearity" % sim_type,
                                           self.default_linearity)
@@ -145,8 +147,11 @@ class Linearity(object):
         self.factor = None
         self.Domega = None
 
-    def __call__(self, domain):
+        self.gain_arr = []
+        self.sigma_arr = []
 
+    def __call__(self, domain):
+        self.domain = domain    
         return self.generate_linearity(domain)
 
     def default_linearity(self, domain):
@@ -237,9 +242,14 @@ class Linearity(object):
             hf = self._limit_imag_part(hf)
         if self.amplifier is None:
             return ifft(np.exp(hf) * fft(A))
-        else:
-            amp_factor = self.amplifier.factor(A, h)
-            return ifft(np.multiply(np.exp(amp_factor), np.exp(hf) * fft(A)))
+        else:        
+            amp_factor = self.amplifier.factor(A, h)   
+            field = ifft(np.multiply(np.exp(amp_factor), np.exp(hf) * fft(A)))
+            if self.use_Er_noise:
+                self.gain_arr.append(ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)]) #!!!
+                noise = self.get_Er_noise(A, ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)])  
+                field += noise
+            return field
     
     def default_exp_f_cached(self, A, h):
         if self.cached_factor is None:
@@ -247,9 +257,30 @@ class Linearity(object):
         if self.amplifier is None:
             return ifft(self.cached_factor * fft(A))
         else:
-            amp_factor = self.amplifier.factor(A, h)
-            # print(f"max value in factorArray: {np.amax(np.exp(amp_factor))}")          
-            return ifft(np.multiply(np.exp(amp_factor), self.cached_factor * fft(A)))
+            amp_factor = self.amplifier.factor(A, h)   
+            field = ifft(np.multiply(np.exp(amp_factor), self.cached_factor * fft(A)))
+            if self.use_Er_noise:
+                self.gain_arr.append(ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)]) #!!!
+                noise = self.get_Er_noise(A, ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)])  
+                field += noise
+            return field
+        
+    def get_Er_noise(self, A, gain):
+        # s_power = np.mean(temporal_power(A))
+        plank = 6.626e-10; # [W*ps^2]
+        NF_dB = 4.5
+        NF = np.power(10, NF_dB / 10)
+        n_sp = NF * gain / (2 * (gain - 1))
+        nyu0 = self.domain.centre_nu
+        h = self.domain.dt
+        alfa = 1
+        sigma = np.sqrt(plank*nyu0*n_sp*(gain-1.0)*alfa/h)
+        self.sigma_arr.append(sigma) #!!!
+        re_noise = np.random.normal(loc=0.0, scale=sigma, size=A.shape)
+        im_noise = np.random.normal(loc=0.0, scale=sigma, size=A.shape)
+        noise = re_noise + 1j * im_noise
+      
+        return noise
 
     def wdm_f(self, As, z):
         return np.asarray([ifft(self.factor[0] * fft(As[0])),

@@ -25,6 +25,7 @@ import numpy as np
 from abc import ABC, abstractmethod
 from pyofss.domain import Domain, lambda_to_omega, lambda_to_nu
 import pandas as pd
+import os.path
 import warnings
     
 class AmplifierBase(ABC):
@@ -43,7 +44,7 @@ class Amplifier(AmplifierBase):
     :param double gain: amount of (logarithmic) gain. *Unit: dB*
     :param double E_sat: energy of saturation gain. *Unit: nJ*
     :param double P_sat: power of saturation gain. *Unit: W*
-    :param double rep_rate: repetition rate of pulse. *Unit: MHz*
+    :param double Tr: repetition rate of pulse. *Unit: ns*
     :param double length: length of the amplifier. *Unit m*
     :parma double lamb0: amplification lorenz profile central wavelength. *Unit: nm*
     :parma double bandwidth: amplification lorenz profile width. *Unit: nm*
@@ -52,8 +53,7 @@ class Amplifier(AmplifierBase):
     """
 
     def __init__(self, name="simple_saturation", gain=None,
-                 E_sat=None, P_sat=None, rep_rate=None, length=1.0, lamb0 = None, bandwidth=None, steps=1):
-        self.total_steps = steps
+                 E_sat=None, P_sat=None, Tr=None, length=1.0, lamb0=None, bandwidth=None, use_Er_profile=False):
         self.length = length
         print(f"amplifier length equals {self.length}")
 
@@ -79,26 +79,34 @@ class Amplifier(AmplifierBase):
         if E_sat is not None:
             self.E_sat = E_sat
         elif P_sat is not None:
-            if rep_rate is None:
+            if Tr is None:
                 raise Exception("Repetition rate is not defined.")
-            self.E_sat = 1e3*P_sat/rep_rate  # nJ
+            self.E_sat = P_sat*Tr  # nJ
         else:
             self.E_sat = None
         self.field = None
+
+        self.use_Er_profile = use_Er_profile
 
     @property
     def spectal_filtration_array(self):
         try:
             return self._spectal_filtration_array
         except:
-            if self.delta is not None and self.lamb is not None:
+            if self.use_Er_profile:
+                A = pd.read_csv(os.path.dirname(__file__) + '/../data/Er_profile.csv')
+                factorArray = np.interp(self.domain.Lambda, A["lambda [nm]"].values, A["gain"].values)
+                factorArray = factorArray/np.amax(factorArray)
+                factorArray[factorArray<0] = 0
+            elif self.delta is not None and self.lamb is not None:
                 factorArray = 1/(1 + 4*(((self.domain.nu -lambda_to_nu(self.lamb))**2)/((self.delta)**2)))
-                DF = pd.DataFrame(fftshift(factorArray))
-                DF.to_csv("LorentzFactorArray.csv")
-                self._spectal_filtration_array = fftshift(factorArray)
             else:
-                self._spectal_filtration_array = np.ones(len(self.domain.Lambda))
-            
+                factorArray = np.ones(len(self.domain.Lambda))
+
+            DF = pd.DataFrame(np.column_stack((self.domain.Lambda, factorArray)), columns=["lambda [nm]", "gain"])
+            DF.to_csv(os.path.dirname(__file__) + "/../data/factor_arrray.csv")
+
+            self._spectal_filtration_array = fftshift(factorArray)
             return self._spectal_filtration_array
 
     def factor(self, A, h):
@@ -106,7 +114,10 @@ class Amplifier(AmplifierBase):
         if self.domain is None:
             raise Exception("Domain is not preset.")
 
-        M = np.log(power(10, 0.1 * self.gain))
+        gain_times = power(10, 0.1 * self.gain)
+        if self.use_Er_profile:
+            gain_times *= self.spectal_filtration_array
+        M = np.log(gain_times)
         G = (M*h) / (2*self.length)
 
         if self.E_sat is not None:
@@ -115,7 +126,9 @@ class Amplifier(AmplifierBase):
         else:
             warnings.warn("saturation is not stated")
 
-        factor = G * self.spectal_filtration_array
+        factor = G
+        if not self.use_Er_profile:
+            factor *= self.spectal_filtration_array
         return factor
 
     def set_domain(self, domain):

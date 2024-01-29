@@ -66,7 +66,7 @@ from .domain import align_with_nu_grid
 
 # Import useful conversions
 from .field import fft, ifft, fftshift, ifftshift
-from .field import temporal_power, spectral_power
+from .field import temporal_power, spectral_power, spectrum_width_params
 from .field import phase, chirp
 from .field import energy
 from .field import inst_freq

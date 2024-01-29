@@ -401,7 +401,8 @@ class OpenclFibre(object):
                  beta=None, gamma=0.0, method="cl_ss_symmetric", total_steps=100,
                  self_steepening=False, centre_omega=None,
                  tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18,
-                 small_signal_gain=None, E_sat=None, lamb0=None, bandwidth=None, 
+                 small_signal_gain=None, E_sat=None, P_sat=None, Tr=None, lamb0=None, bandwidth=None, 
+                 use_Er_profile=False, use_Er_noise=False, 
                  use_Yb_model=False, Pp_0 = None, N = None, Rr=None, save_represent="power", cycle='cycle0', traces=None, dir=None, amplifier=None):
         
         self.cl_programm = cl_programm
@@ -453,10 +454,10 @@ class OpenclFibre(object):
                 print('Use Yb model')
                 self.amplifier = Amplifier2LevelModel(Pp=Pp_0, N=N, Rr=Rr, prg=self.prg, queue=self.queue, ctx=self.ctx, dorf=self.dorf)
             else:
-                if (small_signal_gain is not None) and (E_sat is not None):
+                if (small_signal_gain is not None) and (E_sat is not None or (P_sat is not None and Tr is not None)):
                     print('Use simple saturation model')
                     self.amplifier = Amplifier(
-                        gain=small_signal_gain, E_sat=E_sat, length=self.length, lamb0=lamb0, bandwidth=bandwidth, steps=total_steps)
+                        gain=small_signal_gain, E_sat=E_sat, P_sat=P_sat, Tr=Tr, length=self.length, lamb0=lamb0, bandwidth=bandwidth, use_Er_profile=use_Er_profile)
                 elif (small_signal_gain is None) and (E_sat is None):
                     print('Passive fibre modulation')
                     self.amplifier = None
@@ -465,7 +466,7 @@ class OpenclFibre(object):
                         'Not enought parameters to initialise amplification fiber: both small_signal_gain and E_sat must be passed!'))
                 
         self.linearity = Linearity(alpha, beta, sim_type="default",
-                                    use_cache=True, centre_omega=centre_omega, phase_lim=True, amplifier=self.amplifier)
+                                    use_cache=True, centre_omega=centre_omega, phase_lim=True, use_Er_noise=use_Er_noise, amplifier=self.amplifier)
         self.nonlinearity = Nonlinearity(gamma, None, self_steepening,
                                          False, 0,
                                          self.use_all, tau_1, tau_2, f_R)
