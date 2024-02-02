@@ -38,6 +38,7 @@ from string import Template
 from .linearity import Linearity
 from .nonlinearity import Nonlinearity
 from pyofss.modules.amplifier import Amplifier, Amplifier2LevelModel
+from pyofss.field import temporal_power, get_duration
 from scipy.signal import find_peaks, peak_widths
 import warnings
 
@@ -654,23 +655,25 @@ class OpenclFibre(object):
         # self.clear_arrays_on_device()
         return self.buf_field.get()
     
-    def calculate_refrence_length(self, domain, field):
-        temp_power = abs(field) ** 2
-        d_t = abs(domain.t[1] - domain.t[0])
-        P_0 = np.amax(temp_power)
-        peaks, _ = find_peaks(temp_power, height=0)
-        results_half = peak_widths(temp_power, peaks, rel_height=1)
-        T_0 = d_t * np.amax(results_half[0])
-        if (self.beta_2 is not None):
-            self.L_D = T_0**2 / (10**3 * self.beta_2)
-        if (self.gamma is not None):
-            self.L_NL = 1 / (self.gamma * P_0)
+    def calculate_reference_length(self, domain, field):
+        self.L_D = self.get_dispersion_length(field, domain.dt)
+        self.L_NL = self.get_nonlinear_length(field)
         if (self.L_NL and self.L_D is not None):
-            self.refrence_length = min(self.L_NL, self.L_D)
+            self.reference_length = min(self.L_NL, self.L_D)
         elif (self.L_NL or self.L_D is None):
-            self.refrence_length = None
+            self.reference_length = None
         else:
-            self.refrence_length = self.L_NL if self.L_D is None else self.L_D
+            self.reference_length = self.L_NL if self.L_D is None else self.L_D
+
+    def get_nonlinear_length(self, field):
+        P_0 = np.amax(temporal_power(field))
+        L_NL = 1 / (self.gamma * P_0)
+        return L_NL
+    
+    def get_dispersion_length(self, field, dt):
+        T_0 = get_duration(temporal_power(field), dt)
+        L_D =  T_0**2 / (10**3 * self.beta_2)
+        return L_D
 
     # for usual fibre this info is in storage
     def get_df(self, type = "complex", z_curr=0, channel=None):

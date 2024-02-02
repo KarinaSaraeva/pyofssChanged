@@ -25,6 +25,7 @@ from .linearity import Linearity
 from .nonlinearity import Nonlinearity
 from .stepper import Stepper
 from pyofss.domain import Domain
+from pyofss.field import get_duration_spec, get_duration
 
 
 class FiberInitError(Exception):
@@ -89,7 +90,7 @@ class Fibre(object):
         self.gamma = gamma
         self.L_D = None
         self.L_NL = None
-        self.refrence_length = None
+        self.reference_length = None
         self.cycle = cycle
         self.domain = None
 
@@ -150,13 +151,13 @@ class Fibre(object):
                 self.nonlinearity.factor is None:
             self.linearity(domain)
             self.nonlinearity(domain)
-            self.calculate_refrence_length(domain, field)
+            self.calculate_reference_length(domain, field)
         # Set temporal and spectral arrays for storage:
         self.stepper.storage.t = domain.t
         self.stepper.storage.nu = domain.nu
 
         # Propagate field through fibre:
-        field = self.stepper(field, self.refrence_length)
+        field = self.stepper(field, self.reference_length)
         return field
 
     def l(self, A, z):
@@ -178,30 +179,25 @@ class Fibre(object):
     def amplifier_step(self, A, h):
         return self.linearity.amplification_step(A, h)
 
-    def calculate_refrence_length(self, domain, field):
-        temp_power = abs(field) ** 2
-        d_t = abs(domain.t[1] - domain.t[0])
-        P_0 = amax(temp_power)
-        peaks, _ = find_peaks(temp_power, height=0)
-        results_half = peak_widths(temp_power, peaks, rel_height=1)
-        T_0 = d_t * amax(results_half[0])
-        if (self.beta_2 is not None):
-            self.L_D = T_0**2 / (10**3 * self.beta_2)
-        if (self.gamma is not None):
-            self.L_NL = 1 / (self.gamma * P_0)
-            if (self.small_signal_gain is not None):
-                self.L_NL / (pow(10, 0.1 * self.small_signal_gain))
+    def calculate_reference_length(self, domain, field):
+        self.L_D = self.get_dispersion_length(field, domain.dt)
+        self.L_NL = self.get_nonlinear_length(field)
         if (self.L_NL and self.L_D is not None):
-            self.refrence_length = min(self.L_NL, self.L_D)
+            self.reference_length = min(self.L_NL, self.L_D)
         elif (self.L_NL or self.L_D is None):
-            self.refrence_length = None
+            self.reference_length = None
         else:
-            self.refrence_length = self.L_NL if self.L_D is None else self.L_D
+            self.reference_length = self.L_NL if self.L_D is None else self.L_D
 
-    def print_refrence_length(self, domain, field):
-        self.calculate_refrence_length(domain, field)
-        #print("L_NL = ", self.L_NL)
-        #print("L_D = ", self.L_D)
+    def get_nonlinear_length(self, field):
+        P_0 = amax(temporal_power(field))
+        L_NL = 1 / (self.gamma * P_0)
+        return L_NL
+    
+    def get_dispersion_length(self, field, dt):
+        T_0 = get_duration(temporal_power(field), dt)
+        L_D =  T_0**2 / (10**3 * self.beta_2)
+        return L_D
 
 
 if __name__ == "__main__":

@@ -255,7 +255,6 @@ def spectrum_width_params(P, prominence=0.0001):
     peaks, _ = find_peaks(P, height=0, prominence=prominence)
 
     if (len(peaks) > 1):
-        results_fwhm = peak_widths(P, [peaks[0], peaks[1]], rel_height=0.5)
         heigth_fwhm = np.amax(P)/2
         peaks.sort()
         left_ind = find_x(heigth_fwhm, peaks[0], True, P)
@@ -274,3 +273,18 @@ def spectrum_width_params(P, prominence=0.0001):
         right_ind = results_fwhm[3][0]
 
     return heigth_fwhm, fwhm, left_ind, right_ind
+
+
+def get_duration_spec(P, d_x, prominence=None):
+    if prominence is None:
+        prominence = np.amax(P)/100 
+    heigth_fwhm, fwhm, left_ind, right_ind = spectrum_width_params(
+        P, prominence=prominence)
+    return abs(fwhm)*d_x
+
+def get_duration(P, d_x, prominence=None):
+    if prominence is None:
+        prominence = np.amax(P)/100 
+    heigth_fwhm, fwhm, left_ind, right_ind = max_peak_params(
+        P, prominence=prominence)
+    return fwhm*d_x

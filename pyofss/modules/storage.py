@@ -23,7 +23,7 @@ import os
 import warnings
 
 from pyofss import field
-from pyofss.field import temporal_power, spectral_power, energy, spectrum_width_params
+from pyofss.field import temporal_power, spectral_power, energy, get_duration, get_duration_spec
 
 from scipy.signal import find_peaks
 
@@ -126,7 +126,7 @@ class Storage(object):
     functions to modify the stored data.
     """
 
-    def __init__(self, dir=None, cycle=None, fibre_name=None, **file_import_arguments):
+    def __init__(self, dir=None, cycle=None, fibre_name=None):
         if dir is not None:
             self.dir = dir
             check_dir(self.dir)
@@ -141,8 +141,6 @@ class Storage(object):
         self.z = []
 
         self.nu = []
-
-        self.file_import_arguments = file_import_arguments
 
         # List of tuples of the form (z, h); one tuple per successful step:
         self.step_sizes = []
@@ -189,10 +187,6 @@ class Storage(object):
         def get_peaks(P):
             peaks, _ = find_peaks(P, height=0, prominence=(np.amax(P)/10))
             return peaks
-        def get_duration(P, d_x):
-            heigth_fwhm, fwhm, left_ind, right_ind = spectrum_width_params(
-                P, prominence=(np.amax(P)/10))
-            return abs(fwhm)*d_x if fwhm is not None else None
         
         self.energy_list.append(energy(A, self.t))
         temporal_power_arr = temporal_power(A)
@@ -200,7 +194,7 @@ class Storage(object):
         self.max_power_list.append(np.amax(temporal_power_arr))
         self.peaks_list.append(get_peaks(temporal_power_arr))
         self.duration_list.append(get_duration(temporal_power_arr, self.t[1] - self.t[0]))
-        self.spec_width_list.append(get_duration(spectral_power_arr, self.nu[1] - self.nu[0]))
+        self.spec_width_list.append(get_duration_spec(spectral_power_arr, self.nu[1] - self.nu[0]))
 
     def save_all_storage_to_dir_as_df(
         self,
