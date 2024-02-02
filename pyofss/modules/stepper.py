@@ -125,7 +125,8 @@ class Stepper(object):
         self.min_factor = 0.2
 
         # Store local error of method:
-        self.eta = self.solver.errors[self.method.lower()]
+        if (self.method.lower() != "step_amplifier"):
+            self.eta = self.solver.errors[self.method.lower()]
 
         self.A_out = None
 

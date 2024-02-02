@@ -60,9 +60,9 @@ class Amplifier_ch(object):
         self.sqrt_G = None
 
     def __call__(self, domain, field):
-        #Calculate energy of field for channel I
+        # Calculate energy of field for channel I
         self.E_ch1 = energy(field[0], domain.t)
-        #Calculate energy of field for channel II
+        # Calculate energy of field for channel II
         self.E_ch2 = energy(field[1], domain.t)
 
         # Calculate linear gain from logarithmic gain (G_dB -> G_linear)

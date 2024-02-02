@@ -230,7 +230,7 @@ class Linearity(object):
                               np.exp(hf1)]
 
     def cache(self, h):
-        print("Caching linear factor")
+        #print("Caching linear factor")
         self.generate_cache(h)
 
     def default_f(self, A, z):
@@ -264,6 +264,18 @@ class Linearity(object):
                 noise = self.get_Er_noise(A, ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)])  
                 field += noise
             return field
+        
+    def amplification_step(self, A, h):
+        if self.amplifier is not None:
+            amp_factor = self.amplifier.factor(A, h)   
+            field = ifft(np.multiply(np.exp(amp_factor), fft(A)))
+            if self.use_Er_noise:
+                self.gain_arr.append(ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)]) # TODO: remove
+                noise = self.get_Er_noise(A, ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)])  
+                field += noise
+            return field
+        else:
+            raise ValueError
         
     def get_Er_noise(self, A, gain):
         # s_power = np.mean(temporal_power(A))

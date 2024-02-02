@@ -55,7 +55,7 @@ class Amplifier(AmplifierBase):
     def __init__(self, name="simple_saturation", gain=None,
                  E_sat=None, P_sat=None, Tr=None, length=1.0, lamb0=None, bandwidth=None, use_Er_profile=False, prg=None, queue=None, ctx=None, dorf="double"):
         self.length = length
-        print(f"amplifier length equals {self.length}")
+        #print(f"amplifier length equals {self.length}")
 
         if gain is None:
             warnings.warn("The gain is not defined.")
@@ -67,8 +67,8 @@ class Amplifier(AmplifierBase):
         if (bandwidth is not None and lamb0 is not None):
             self.delta = (Domain.vacuum_light_speed * bandwidth) / (lamb0 * lamb0)
             self.lamb = lamb0
-            print(f"YDF lanmbda = {self.lamb} nm")
-            print(f"YDF bandwidth = {bandwidth} nm")
+            #print(f"YDF lanmbda = {self.lamb} nm")
+            #print(f"YDF bandwidth = {bandwidth} nm")
         else: 
             self.delta = None
             self.lamb = None
@@ -143,23 +143,12 @@ class Amplifier(AmplifierBase):
             return self.gain_times
 
     def factor(self, A, h):
-        """ amplification factor used in an exponent of a linearity step """
-        if self.domain is None:
-            raise Exception("Domain is not preset.")
+        """ amplification factor used in an exponent of a linearity step """        
+        G0 = (self.gain_times_log*h) / (2*self.length)
 
-        gain_times = np.power(10, 0.1 * self.gain)
-        if self.use_Er_profile:
-            gain_times *= self.spectal_filtration_array
-        M = np.log(gain_times)
-        G = (M*h) / (2*self.length)
+        E = energy(A, self.domain.t)
+        factor = G0/(1.0 + E/self.E_sat)
 
-        if self.E_sat is not None:
-            E = energy(A, self.domain.t)
-            G = G/(1.0 + E/self.E_sat)
-        else:
-            warnings.warn("saturation is not stated")
-
-        factor = G
         if not self.use_Er_profile:
             factor *= self.spectal_filtration_array
         return factor
@@ -200,7 +189,7 @@ class Amplifier2LevelModel(AmplifierBase):
         Amplifier2LevelModel provides wavelength dependent gain based on a Yb rate equations.
         All the formulas are similar to those used in the article "Kirsch, D.C. at all., 2022, Communications Physics, 5(1), p.219."
         """
-        print(f"use two level Yb gain model")
+        #print(f"use two level Yb gain model")
         #constatnts 
         self.h_p = 6.62 * 1e-34
         self.T = 850.0 * 1e-6 # units s

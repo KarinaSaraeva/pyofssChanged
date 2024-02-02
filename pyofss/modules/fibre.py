@@ -114,16 +114,17 @@ class Fibre(object):
         class Function():
             """ Class to hold linear and nonlinear functions. """
 
-            def __init__(self, l, n, linear, nonlinear):
+            def __init__(self, l, n, linear, nonlinear, amplifier_step):
                 self.l = l
                 self.n = n
                 self.linear = linear
                 self.nonlinear = nonlinear
+                self.amplifier_step = amplifier_step
 
             def __call__(self, A, z):
                 return self.l(A, z) + self.n(A, z)
 
-        self.function = Function(self.l, self.n, self.linear, self.nonlinear)
+        self.function = Function(self.l, self.n, self.linear, self.nonlinear, self.amplifier_step)
 
         def check_if_None(x):
             return 'None' if x is None else x
@@ -173,6 +174,9 @@ class Fibre(object):
     def nonlinear(self, A, h, B):
         """ Nonlinear term in exponential factor. """
         return self.nonlinearity.exp_non(A, h, B)
+    
+    def amplifier_step(self, A, h):
+        return self.linearity.amplification_step(A, h)
 
     def calculate_refrence_length(self, domain, field):
         temp_power = abs(field) ** 2
@@ -196,8 +200,8 @@ class Fibre(object):
 
     def print_refrence_length(self, domain, field):
         self.calculate_refrence_length(domain, field)
-        print("L_NL = ", self.L_NL)
-        print("L_D = ", self.L_D)
+        #print("L_NL = ", self.L_NL)
+        #print("L_D = ", self.L_D)
 
 
 if __name__ == "__main__":
@@ -245,7 +249,7 @@ if __name__ == "__main__":
         stop = time.time()
         P_ts.append(temporal_power(sys.field))
 
-        print("Run time for {} method is {}".format(m, stop-start))
+        #print("Run time for {} method is {}".format(m, stop-start))
 
     multi_plot(sys.domain.t, P_ts, methods, labels["t"], labels["P_t"],
                methods, x_range=(-20.0, 40.0), use_fill=False)
