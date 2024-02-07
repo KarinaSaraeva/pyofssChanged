@@ -93,6 +93,7 @@ class Fibre(object):
         self.reference_length = None
         self.cycle = cycle
         self.domain = None
+        self.amplifier = None
 
         if (use_Yb_model):
             self.amplifier = Amplifier2LevelModel(Pp=Pp_0, N=N, Rr=Rr)
@@ -181,7 +182,7 @@ class Fibre(object):
     
     def get_dispersion_length(self, field):
         T_0 = get_duration(temporal_power(field), self.domain.dt)
-        L_D =  T_0**2 / self.beta_2
+        L_D =  T_0**2 / abs(self.beta_2)
         return L_D
 
 

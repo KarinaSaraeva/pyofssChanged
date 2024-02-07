@@ -287,7 +287,7 @@ def get_duration_spec(P, d_x, prominence=None):
 
 def get_duration(P, d_x, prominence=None):
     if prominence is None:
-        prominence = np.amax(P)/100 
+        prominence = np.amax(P)/100
     heigth_fwhm, fwhm, left_ind, right_ind = max_peak_params(
         P, prominence=prominence)
     return fwhm*d_x
