@@ -49,7 +49,7 @@ from .modules.delay import Delay
 from .modules.dispersion import Dispersion
 from .modules.static_pump_wdm import StaticPumpWDM
 from .modules.storage import Storage
-from .modules.fibre_plotter import FibrePlotter
+from .modules.fibre_plotter import FibrePlotter, visualise_results_df, visualise_fields_df
 from .modules.noise import Noise
 
 try:
@@ -72,6 +72,7 @@ from .field import energy
 from .field import inst_freq
 from .field import loss_infrared_db
 from .field import loss_rayleigh_db
+from .field import add_noise 
 
 # Import pulse width conversion function
 from .modules.generator import convert_pulse_width

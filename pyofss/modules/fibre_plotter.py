@@ -113,3 +113,57 @@ class FibrePlotter(object):
         ax.plot(self.z, power_peaks)
         z_start = self.z[-1]
         return z_start
+    
+
+def visualise_fields_df(fields_df, y_arr, y_label="", y_lims=None):
+    cycle_names = list(set(fields_df.index.get_level_values('cycle').values))
+    cycle_names.sort()
+    cycle_df = fields_df.loc[cycle_names[0]]
+    fibre_names = list(set(cycle_df.index.get_level_values('fibre').values))
+    fibre_names.sort()
+    max_value = fields_df.values.max()
+    min_value = fields_df.values.min()
+
+    fig, ax = plt.subplots(nrows=len(cycle_names), ncols=len(fibre_names), figsize=(50, 10))
+
+    cycle_names = cycle_names
+    for i, cycle_name in enumerate(cycle_names):
+        cycle_df = fields_df.loc[cycle_name]
+        fibre_names = list(set(cycle_df.index.get_level_values('fibre').values))
+        fibre_names.sort()
+        for j, fibre_name in enumerate(fibre_names):
+            fibre_df = fields_df.loc[cycle_name].loc[fibre_name]
+            z = fibre_df.index.get_level_values('z [mm]').values
+            h = fibre_df.values.transpose()
+            X, Y = np.meshgrid(z, y_arr)
+            cf = ax.pcolormesh(X, Y, h, shading='auto', cmap=plt.cm.get_cmap('plasma'), vmin=min_value, vmax=max_value)
+            if y_lims is not None:
+                ax.set_ylim(*y_lims)
+            
+            ax.set_ylabel(y_label)
+            ax.set_xlabel('z [mm]')
+            ax.set_title(f"{cycle_name}, {fibre_name}")
+            fig.colorbar(cf, ax=ax)
+
+def visualise_results_df(df_results):
+    len_characts = len(df_results.columns)
+
+    nrows = int(np.ceil(len_characts / 2))
+    ncols = min(len_characts, 2)
+    fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(ncols*10,nrows*5))
+
+    z_arr = df_results.index.get_level_values("z [mm]").values
+
+    for i, col_name in enumerate(df_results.columns):
+        row = i // ncols
+        col = i % ncols
+
+        if col_name != "Peaks [idx]":
+            axs[row, col].plot(z_arr, df_results[col_name])
+            axs[row, col].set_xlabel(f"z [mm]")
+            axs[row, col].set_ylabel(f"{col_name}")
+        else:
+            peak_num_arr = df_results.loc[:, [col_name]].apply(len, axis=1).values
+            axs[row, col].plot(z_arr, peak_num_arr)
+            axs[row, col].set_xlabel(f"z [mm]")
+            axs[row, col].set_ylabel(f"{col_name}")

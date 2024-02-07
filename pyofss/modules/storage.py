@@ -23,7 +23,7 @@ import os
 import warnings
 
 from pyofss import field
-from pyofss.field import temporal_power, spectral_power, energy, get_duration, get_duration_spec, get_peaks
+from pyofss.field import temporal_power, spectral_power, energy, get_duration, get_duration_spec, get_peaks, get_downsampled
 
 from scipy.signal import find_peaks
 
@@ -126,7 +126,7 @@ class Storage(object):
     functions to modify the stored data.
     """
 
-    def __init__(self, dir=None, cycle=None, fibre_name=None, f=None):
+    def __init__(self, dir=None, cycle=None, fibre_name=None, f=None, downsampling=None):
         if dir is not None:
             self.dir = dir
             check_dir(self.dir)
@@ -136,6 +136,8 @@ class Storage(object):
         self.f = f
         self.cycle = cycle
         self.fibre_name = fibre_name
+        self.downsampling = downsampling
+
         self.plt_data = None
         self.domain = None
         self.As = []
@@ -314,18 +316,21 @@ class Storage(object):
             calculate_power = spectral_power
 
         if channel is not None:
-            temp = [calculate_power(A[channel]) for A in self.As]
+            power = [calculate_power(A[channel]) for A in self.As]
         else:
-            temp = [calculate_power(A) for A in self.As]
+            power = [calculate_power(A) for A in self.As]
 
         if normalised:
-            factor = max(temp[0])
-            y = [t / factor for t in temp]
+            factor = max(power[0])
+            y = [t / factor for t in power]
         else:
-            y = temp
+            y = power
 
         if reduced_range is not None:
             x, y = reduce_to_range(x, y, reduced_range[0], reduced_range[1])
+
+        if self.downsampling is not None:
+            y = [get_downsampled(P, self.downsampling) for P in y]
 
         z = self.z
         self.plt_data = (x, y, z)

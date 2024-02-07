@@ -84,7 +84,7 @@ class Stepper(object):
     """
 
     def __init__(self, traces=1, local_error=1.0e-6, method="RK4",
-                 f=None, f_characts=None, length=1.0, total_steps=100, dir=None, save_represent="power", cycle=None, fibre_name=None):
+                 f=None, f_characts=None, length=1.0, total_steps=100, dir=None, save_represent="power", cycle=None, fibre_name=None, downsampling=None):
         self.traces = traces
         self.local_error = local_error
         try:
@@ -112,7 +112,7 @@ class Stepper(object):
 
         # Use a list of tuples ( z, A(z) ) for dense output if required:
         self.storage = Storage(
-            dir, cycle=self.cycle, fibre_name=self.fibre_name, f=f_characts)
+            dir, cycle=self.cycle, fibre_name=self.fibre_name, f=f_characts, downsampling=downsampling)
 
         # Store constants for adaptive method:
         self.total_attempts = 1000

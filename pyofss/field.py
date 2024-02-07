@@ -23,6 +23,8 @@ import numpy as np
 import scipy.fftpack
 import scipy.integrate as integrate
 from scipy.signal import find_peaks, peak_widths
+import scipy.integrate as integrate
+from scipy.interpolate import interp1d
 
 try:
     import pyfftw
@@ -291,3 +293,19 @@ def get_duration(P, d_x, prominence=None):
     heigth_fwhm, fwhm, left_ind, right_ind = max_peak_params(
         P, prominence=prominence)
     return fwhm*d_x
+
+def add_noise(A, t, target_snr_db):
+    E = integrate.simps(temporal_power(A), t*1e-3)  # nJ
+    Tr = 54.4 # ns
+    sig_avg = E/Tr
+    sig_avg_db = 10 * np.log10(sig_avg)
+    noise_avg_db = sig_avg_db - target_snr_db
+    noise_avg = 10 ** (noise_avg_db / 10)
+    mean_noise = 0
+    noise = np.random.normal(mean_noise, np.sqrt(noise_avg), np.shape(A))
+    return A + noise
+
+def get_downsampled(P, downsampling):
+    f = interp1d(np.arange(len(P)), P)
+    interpolated_P = f(np.linspace(0, len(P) - 1, downsampling))
+    return interpolated_P

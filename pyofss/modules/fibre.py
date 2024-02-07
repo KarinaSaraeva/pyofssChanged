@@ -79,7 +79,7 @@ class Fibre(object):
                  small_signal_gain=None, E_sat=None, P_sat=None, Tr=None, lamb0=None, bandwidth=None, 
                  use_Er_profile=False, use_Er_noise=False,
                  use_Yb_model=False, Pp_0 = None, N = None, Rr=None,
-                 dir=None, save_represent="power", cycle=None):
+                 dir=None, save_represent="power", cycle=None, downsampling=None):
 
         use_cache = not(method.upper().startswith('A'))
 
@@ -130,7 +130,7 @@ class Fibre(object):
         self.function_characts = FunctionCharacts(self.get_dispersion_length, self.get_nonlinear_length)
 
         self.stepper = Stepper(traces, local_error, method, self.function_step, self.function_characts,
-                               self.length, total_steps, dir, save_represent, cycle=self.cycle, fibre_name=self.name)
+                               self.length, total_steps, dir, save_represent, cycle=self.cycle, fibre_name=self.name, downsampling=downsampling)
 
     def __call__(self, domain, field):
         if self.domain != domain or \

@@ -25,6 +25,7 @@ import pyopencl.array as cl_array
 from pynvml import *
 import gc
 import pandas as pd
+
 from pyofss.field import fft, ifft, fftshift
 import sys as sys0
 version_py = sys0.version_info[0]
@@ -285,6 +286,7 @@ class OpenclProgramm(object):
         self.use_all = use_all
         self.dorf = dorf
         self.downsampling = downsampling
+        self.domain = None
 
         self.queue = None
         self.np_float = None
@@ -348,6 +350,9 @@ class OpenclProgramm(object):
                 self.plan.execute = self.reikna_fft_execute
             else:
                 self.plan = Plan(domain.total_samples, queue=self.queue, dtype=self.np_complex, fast_math=self.fast_math)
+            
+        if self.domain is None:
+            self.domain = domain
 
     def send_arrays_to_device(self, field, factor, h_R, nn_factor):
         """ Move numpy arrays onto compute device. """

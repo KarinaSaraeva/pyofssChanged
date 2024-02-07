@@ -87,9 +87,31 @@ class System(object):
         
         if self.charact_dir is not None:
             check_dir(self.charact_dir)
-        
-        
 
+    @property
+    def df_temp(self):
+        if self.df_type_dict["temp"] is not None:
+            return self.df_type_dict["temp"] 
+        else:
+            self.init_df("temp")
+            return self.df_type_dict["temp"]
+
+    @property
+    def df_spec(self):
+        if self.df_type_dict["spec"] is not None:
+            return self.df_type_dict["spec"] 
+        else:
+            self.init_df("spec")
+            return self.df_type_dict["spec"]
+        
+    @property
+    def df_complex(self):
+        if self.df_type_dict["complex"] is not None:
+            return self.df_type_dict["complex"] 
+        else:
+            self.init_df("complex")
+            return self.df_type_dict["complex"]
+        
     def clear(self, remove_modules=False):
         """
         Clear contents of all fields.
