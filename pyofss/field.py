@@ -274,6 +274,9 @@ def spectrum_width_params(P, prominence=0.0001):
 
     return heigth_fwhm, fwhm, left_ind, right_ind
 
+def get_peaks(P):
+    peaks, _ = find_peaks(P, height=0, prominence=(np.amax(P)/10))
+    return peaks
 
 def get_duration_spec(P, d_x, prominence=None):
     if prominence is None:

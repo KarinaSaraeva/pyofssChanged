@@ -25,7 +25,7 @@ from .linearity import Linearity
 from .nonlinearity import Nonlinearity
 from .stepper import Stepper
 from pyofss.domain import Domain
-from pyofss.field import get_duration_spec, get_duration
+from pyofss.field import get_duration_spec, get_duration, temporal_power
 
 
 class FiberInitError(Exception):
@@ -100,11 +100,6 @@ class Fibre(object):
             if (small_signal_gain is not None) and (E_sat is not None or (P_sat is not None and Tr is not None)):
                 self.amplifier = Amplifier(
                     gain=self.small_signal_gain, E_sat=E_sat, P_sat=P_sat, Tr=Tr, length=self.length, lamb0=lamb0, bandwidth=bandwidth, use_Er_profile=use_Er_profile)
-            elif (small_signal_gain is None) and (E_sat is None):
-                self.amplifier = None
-            else:
-                assert(FiberInitError(
-                    'Not enought parameters to initialise amplification fiber: both small_signal_gain and E_sat must be passed!'))
 
         self.linearity = Linearity(alpha=alpha, beta=beta, sim_type=sim_type,
                                    use_cache=use_cache, centre_omega=centre_omega, amplifier=self.amplifier, use_Er_noise=use_Er_noise)
@@ -112,7 +107,7 @@ class Fibre(object):
                                          raman_scattering, rs_factor,
                                          use_all, tau_1, tau_2, f_R)
 
-        class Function():
+        class FunctionStep():
             """ Class to hold linear and nonlinear functions. """
 
             def __init__(self, l, n, linear, nonlinear, amplifier_step):
@@ -124,26 +119,17 @@ class Fibre(object):
 
             def __call__(self, A, z):
                 return self.l(A, z) + self.n(A, z)
+            
+        class FunctionCharacts():
+            def __init__(self, l_d, l_nl):
+                self.l_d = l_d
+                self.l_nl = l_nl
 
-        self.function = Function(self.l, self.n, self.linear, self.nonlinear, self.amplifier_step)
+        self.function_step = FunctionStep(self.l, self.n, self.linear, self.nonlinear, self.amplifier_step)
+        self.function_characts = FunctionCharacts(self.get_dispersion_length, self.get_nonlinear_length)
 
-        def check_if_None(x):
-            return 'None' if x is None else x
-
-        def get_beta_by_i(i):
-            if beta is not None:
-                if i > len(beta) - 1:
-                    return 'None'
-                else:
-                    return beta[i]
-            else:
-                return 'None'
-
-        file_import_arguments = {'alpha': check_if_None(alpha), 'beta2': get_beta_by_i(2), 'beta3': get_beta_by_i(3),
-                                 'gamma': gamma, 'small_signal_gain': check_if_None(small_signal_gain), 'E_sat': check_if_None(E_sat)}
-        self.stepper = Stepper(traces, local_error, method, self.function,
-                               self.length, total_steps, dir, save_represent, name=self.name, cycle=self.cycle, fibre_name=self.name,
-                               **file_import_arguments)
+        self.stepper = Stepper(traces, local_error, method, self.function_step, self.function_characts,
+                               self.length, total_steps, dir, save_represent, cycle=self.cycle, fibre_name=self.name)
 
     def __call__(self, domain, field):
         if self.domain != domain or \
@@ -151,12 +137,11 @@ class Fibre(object):
                 self.nonlinearity.factor is None:
             self.linearity(domain)
             self.nonlinearity(domain)
-            self.calculate_reference_length(domain, field)
-        # Set temporal and spectral arrays for storage:
-        self.stepper.storage.t = domain.t
-        self.stepper.storage.nu = domain.nu
+            self.stepper.storage(domain)
+            self.domain = domain
 
         # Propagate field through fibre:
+        self.calculate_reference_length(field)
         field = self.stepper(field, self.reference_length)
         return field
 
@@ -179,8 +164,8 @@ class Fibre(object):
     def amplifier_step(self, A, h):
         return self.linearity.amplification_step(A, h)
 
-    def calculate_reference_length(self, domain, field):
-        self.L_D = self.get_dispersion_length(field, domain.dt)
+    def calculate_reference_length(self, field):
+        self.L_D = self.get_dispersion_length(field)
         self.L_NL = self.get_nonlinear_length(field)
         if (self.L_NL and self.L_D is not None):
             self.reference_length = min(self.L_NL, self.L_D)
@@ -194,9 +179,9 @@ class Fibre(object):
         L_NL = 1 / (self.gamma * P_0)
         return L_NL
     
-    def get_dispersion_length(self, field, dt):
-        T_0 = get_duration(temporal_power(field), dt)
-        L_D =  T_0**2 / (10**3 * self.beta_2)
+    def get_dispersion_length(self, field):
+        T_0 = get_duration(temporal_power(field), self.domain.dt)
+        L_D =  T_0**2 / self.beta_2
         return L_D
 
 

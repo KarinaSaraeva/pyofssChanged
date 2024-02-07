@@ -497,6 +497,8 @@ class OpenclFibre(object):
         self.energy_list = []
         self.max_power_list = []
         self.peaks_list = []
+        self.l_nl_list = []
+        self.l_d_list = []
 
         self.z_list = []
         self.temp_field_list = []
@@ -602,13 +604,6 @@ class OpenclFibre(object):
     def __call__(self, domain, field):
         # Setup plan for calculating fast Fourier transforms:
         get_device_memory_info()
-        self.calculate_refrence_length(domain, field)
-        if self.stepsize > self.refrence_length * (10 ** (-2)):
-            warnings.warn(
-                f"{self.cycle}: {self.name}: h must be much less than dispersion length (L_D) and the nonlinear length (L_NL)\n        \
-                now the minimum of the characteristic distances is equal to {self.refrence_length:.6f}*km* \n         \
-                step is equal to {self.stepsize}*km*"
-            )
 
         if self.domain != domain:
             self.domain = domain
@@ -621,7 +616,13 @@ class OpenclFibre(object):
                     self.nn_factor = 1.0 + self.omega * self.ss_factor
                 else:
                     self.nn_factor = None
-
+            self.calculate_reference_length(field)
+            if self.stepsize > self.reference_length * (10 ** (-2)):
+                warnings.warn(
+                    f"{self.cycle}: {self.name}: h must be much less than dispersion length (L_D) and the nonlinear length (L_NL)\n        \
+                    now the minimum of the characteristic distances is equal to {self.reference_length:.6f}*km* \n         \
+                    step is equal to {self.stepsize}*km*"
+                )
         if self.factor is None:
             self.factor = self.linearity(domain)
 
@@ -655,8 +656,8 @@ class OpenclFibre(object):
         # self.clear_arrays_on_device()
         return self.buf_field.get()
     
-    def calculate_reference_length(self, domain, field):
-        self.L_D = self.get_dispersion_length(field, domain.dt)
+    def calculate_reference_length(self, field):
+        self.L_D = self.get_dispersion_length(field)
         self.L_NL = self.get_nonlinear_length(field)
         if (self.L_NL and self.L_D is not None):
             self.reference_length = min(self.L_NL, self.L_D)
@@ -670,9 +671,9 @@ class OpenclFibre(object):
         L_NL = 1 / (self.gamma * P_0)
         return L_NL
     
-    def get_dispersion_length(self, field, dt):
-        T_0 = get_duration(temporal_power(field), dt)
-        L_D =  T_0**2 / (10**3 * self.beta_2)
+    def get_dispersion_length(self, field):
+        T_0 = get_duration(temporal_power(field), self.domain.dt)
+        L_D =  T_0**2 / (self.beta_2)
         return L_D
 
     # for usual fibre this info is in storage
@@ -704,7 +705,7 @@ class OpenclFibre(object):
         z = self.z_list
 
         arr_z = np.array(z)*10**6 + z_curr
-        characteristic = ["max_value", "energy", "duration", "spec_width", "peaks"]
+        characteristic = ["Peak Power [W]", "Energy [nJ]", "Temp width [ps]", "Spec width [THz]", "Dispersion length [km]", "Nonlinear length [km]", "Peaks [idx]"]
         if self.cycle and self.name is not None:
             iterables = [[self.cycle], [self.name], arr_z]
             index = pd.MultiIndex.from_product(
@@ -714,12 +715,13 @@ class OpenclFibre(object):
             index = pd.MultiIndex.from_product(iterables, names=["z [mm]"])
 
         df_results = pd.DataFrame(index=index, columns=characteristic)
-        df_results["max_value"] = self.max_power_list
-        df_results["energy"] = self.energy_list
-        # duration and spec width are not calculated in OpenclFibre
-        # df_results["duration"] = self.duration_list   
-        # df_results["spec_width"] = self.spec_width_list
-        # df_results["peaks"] = self.peaks_list
+        df_results["Peak Power [W]"] = self.max_power_list
+        df_results["Energy [nJ]"] = self.energy_list
+        # df_results["Temp width [ps]"] = self.duration_list
+        # df_results["Spec width [THz]"] = self.spec_width_list
+        # df_results["Peaks [idx]"] = self.peaks_list
+        df_results["Dispersion length [km]"] = self.l_d_list
+        df_results["Nonlinear length [km]"] = self.l_nl_list
         return df_results
 
     @staticmethod
@@ -780,6 +782,10 @@ class OpenclFibre(object):
         energy = cl.array.sum(self.simpson_result, queue=self.queue)
         self.energy_list.append(energy.get())
         self.max_power_list.append(max_power.get())
+
+        field_cpu = field.get()
+        self.l_d_list.append(self.get_dispersion_length(field_cpu))
+        self.l_nl_list.append(self.get_nonlinear_length(field_cpu))
         #self.peaks_list.append(get_peaks(power_buffer_cpu, max_power/10)) # cant be paralleled
 
     def get_energy(self, field):
@@ -981,6 +987,7 @@ class OpenclFibre(object):
         self.cl_linear(field, half_step, factor)
 
         self.cl_sum(field, 1.0, field_temp, inv_six)
+
 
 if __name__ == "__main__":
     # Compare simulations using Fibre and OpenclFibre modules.

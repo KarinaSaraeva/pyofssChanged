@@ -23,7 +23,7 @@ import os
 import warnings
 
 from pyofss import field
-from pyofss.field import temporal_power, spectral_power, energy, get_duration, get_duration_spec
+from pyofss.field import temporal_power, spectral_power, energy, get_duration, get_duration_spec, get_peaks
 
 from scipy.signal import find_peaks
 
@@ -126,21 +126,20 @@ class Storage(object):
     functions to modify the stored data.
     """
 
-    def __init__(self, dir=None, cycle=None, fibre_name=None):
+    def __init__(self, dir=None, cycle=None, fibre_name=None, f=None):
         if dir is not None:
             self.dir = dir
             check_dir(self.dir)
         else:
             self.dir = None
 
+        self.f = f
         self.cycle = cycle
         self.fibre_name = fibre_name
         self.plt_data = None
-        self.t = []
+        self.domain = None
         self.As = []
         self.z = []
-
-        self.nu = []
 
         # List of tuples of the form (z, h); one tuple per successful step:
         self.step_sizes = []
@@ -153,6 +152,11 @@ class Storage(object):
         self.peaks_list = []
         self.duration_list = []
         self.spec_width_list = []
+        self.l_nl_list = []
+        self.l_d_list = []
+
+    def __call__(self, domain):
+        self.domain = domain
 
     def reset_array(self):
         self.As = []
@@ -184,17 +188,16 @@ class Storage(object):
         
         updates the list of pulse characteristics appending new items to the characteristics lists 
         """
-        def get_peaks(P):
-            peaks, _ = find_peaks(P, height=0, prominence=(np.amax(P)/10))
-            return peaks
         
-        self.energy_list.append(energy(A, self.t))
+        self.energy_list.append(energy(A, self.domain.t))
         temporal_power_arr = temporal_power(A)
         spectral_power_arr = spectral_power(A)
         self.max_power_list.append(np.amax(temporal_power_arr))
         self.peaks_list.append(get_peaks(temporal_power_arr))
-        self.duration_list.append(get_duration(temporal_power_arr, self.t[1] - self.t[0]))
-        self.spec_width_list.append(get_duration_spec(spectral_power_arr, self.nu[1] - self.nu[0]))
+        self.duration_list.append(get_duration(temporal_power_arr, self.domain.dt))
+        self.spec_width_list.append(get_duration_spec(spectral_power_arr, self.domain.dnu))
+        self.l_d_list.append(self.f.l_d(A))
+        self.l_nl_list.append(self.f.l_nl(A))
 
     def save_all_storage_to_dir_as_df(
         self,
@@ -263,7 +266,7 @@ class Storage(object):
         z = self.z
 
         arr_z = np.array(z)*10**6 + z_curr
-        characteristic = ["max_value", "energy", "duration", "spec_width", "peaks"]
+        characteristic = ["Peak Power [W]", "Energy [nJ]", "Temp width [ps]", "Spec width [THz]", "Dispersion length [km]", "Nonlinear length [km]", "Peaks [idx]"]
         if self.cycle and self.fibre_name is not None:
             iterables = [[self.cycle], [self.fibre_name], arr_z]
             index = pd.MultiIndex.from_product(
@@ -274,11 +277,13 @@ class Storage(object):
             index = pd.MultiIndex.from_product(iterables, names=["z [mm]"])
 
         df_results = pd.DataFrame(index=index, columns=characteristic)
-        df_results["max_value"] = self.max_power_list
-        df_results["energy"] = self.energy_list
-        df_results["duration"] = self.duration_list
-        df_results["spec_width"] = self.spec_width_list
-        df_results["peaks"] = self.peaks_list
+        df_results["Peak Power [W]"] = self.max_power_list
+        df_results["Energy [nJ]"] = self.energy_list
+        df_results["Temp width [ps]"] = self.duration_list
+        df_results["Spec width [THz]"] = self.spec_width_list
+        df_results["Peaks [idx]"] = self.peaks_list
+        df_results["Dispersion length [km]"] = self.l_d_list
+        df_results["Nonlinear length [km]"] = self.l_nl_list
         return df_results
 
     def get_plot_data(
@@ -302,10 +307,10 @@ class Storage(object):
         temporal/spectral power array, and array of z values for the x,y data.
         """
         if is_temporal:
-            x = self.t
+            x = self.domain.t
             calculate_power = temporal_power
         else:
-            x = self.nu
+            x = self.domain.nu
             calculate_power = spectral_power
 
         if channel is not None:
