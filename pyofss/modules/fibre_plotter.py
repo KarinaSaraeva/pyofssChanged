@@ -115,16 +115,29 @@ class FibrePlotter(object):
         return z_start
     
 
-def visualise_fields_df(fields_df, y_arr, y_label="", y_lims=None):
+def visualise_fields_df(fields_df, y_arr, y_label="", y_lims=None, auto_lims=False, cbar_label="", figname=None, title=None, max_value=None, min_value=None):
     cycle_names = list(set(fields_df.index.get_level_values('cycle').values))
     cycle_names.sort()
     cycle_df = fields_df.loc[cycle_names[0]]
     fibre_names = list(set(cycle_df.index.get_level_values('fibre').values))
     fibre_names.sort()
-    max_value = fields_df.values.max()
-    min_value = fields_df.values.min()
 
-    fig, ax = plt.subplots(nrows=len(cycle_names), ncols=len(fibre_names), figsize=(50, 10))
+    if max_value is None:
+        max_value = fields_df.values.max()
+    if max_value is None:
+        min_value = fields_df.values.min()
+
+    nrows = int(np.ceil(len(cycle_names) / 2))
+    ncols = min(len(fibre_names), 2)
+
+    fig, ax = plt.subplots(nrows=len(cycle_names), ncols=len(fibre_names), figsize=(ncols*10,nrows*5))
+
+    if (type(ax) is not np.ndarray):
+        ax = np.array([[ax]])
+        print(f"{ax.shape}")
+    elif len(ax.shape) == 1:
+        ax = ax.reshape(1, -1)
+        print(f"{ax.shape}")
 
     cycle_names = cycle_names
     for i, cycle_name in enumerate(cycle_names):
@@ -134,18 +147,49 @@ def visualise_fields_df(fields_df, y_arr, y_label="", y_lims=None):
         for j, fibre_name in enumerate(fibre_names):
             fibre_df = fields_df.loc[cycle_name].loc[fibre_name]
             z = fibre_df.index.get_level_values('z [mm]').values
-            h = fibre_df.values.transpose()
-            X, Y = np.meshgrid(z, y_arr)
-            cf = ax.pcolormesh(X, Y, h, shading='auto', cmap=plt.cm.get_cmap('plasma'), vmin=min_value, vmax=max_value)
-            if y_lims is not None:
-                ax.set_ylim(*y_lims)
-            
-            ax.set_ylabel(y_label)
-            ax.set_xlabel('z [mm]')
-            ax.set_title(f"{cycle_name}, {fibre_name}")
-            fig.colorbar(cf, ax=ax)
 
-def visualise_results_df(df_results):
+            if auto_lims:
+                _, _, left_idx_start, right_idx_start = spectrum_width_params(h[:, 0], h[:, 0].max()/10)
+                _, _, left_idx_end, right_idx_end = spectrum_width_params(h[:, -1], h[:, -1].max()/10)
+
+                left_idx = min(left_idx_start, left_idx_end) - 100
+                right_idx = max(right_idx_start, right_idx_end) + 100
+
+                # left_lim_start, right_lim_start = y_arr[[int(left_idx), int(right_idx)]]
+                # ax[i, j].set_ylim(left_lim_start, right_lim_start)
+                
+                X, Y = np.meshgrid(z, y_arr[left_idx:right_idx])
+                h = fibre_df.values[:, left_idx:right_idx].transpose()
+
+            elif y_lims is not None:
+                # ax[i, j].set_ylim(*y_lims)
+                indices = np.where((y_arr > y_lims[0]) & (y_arr < y_lims[1]))
+                left_idx = np.min(indices)
+                right_idx = np.max(indices)
+                X, Y = np.meshgrid(z, y_arr[left_idx:right_idx])
+                h = fibre_df.values[:, left_idx:right_idx].transpose()
+            
+            cf = ax[i, j].pcolormesh(X, Y, h, shading='auto', cmap=plt.cm.get_cmap('plasma'), vmin=min_value, vmax=max_value)
+            
+            ax[i, j].set_ylabel(y_label)
+            ax[i, j].set_xlabel('z [mm]')
+            if (len(cycle_names) > 1):
+                ax[i, j].set_title(f"{cycle_name}, {fibre_name}")
+            else:
+                ax[i, j].set_title(f"{fibre_name}")
+
+    cbar = fig.colorbar(cf, ax=ax)
+    cbar.ax.set_xlabel(cbar_label, labelpad=15) 
+
+    if title is not None:
+        fig.suptitle(title)
+
+    if figname is not None:
+        plt.savefig(figname)
+
+    return fig
+
+def visualise_results_df(df_results, figname=None, title=None):
     len_characts = len(df_results.columns)
 
     nrows = int(np.ceil(len_characts / 2))
@@ -167,3 +211,12 @@ def visualise_results_df(df_results):
             axs[row, col].plot(z_arr, peak_num_arr)
             axs[row, col].set_xlabel(f"z [mm]")
             axs[row, col].set_ylabel(f"{col_name}")
+
+    if title is not None:
+        fig.suptitle(title)
+
+    if figname is not None:
+        plt.savefig(figname)
+
+    return fig
+    

@@ -257,7 +257,7 @@ def spectrum_width_params(P, prominence=0.0001):
     peaks, _ = find_peaks(P, height=0, prominence=prominence)
 
     if (len(peaks) > 1):
-        heigth_fwhm = np.amax(P)/2
+        heigth_fwhm = np.amax(P)/10
         peaks.sort()
         left_ind = find_x(heigth_fwhm, peaks[0], True, P)
         right_ind = find_x(heigth_fwhm, peaks[-1], False, P)

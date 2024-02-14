@@ -678,7 +678,7 @@ class OpenclFibre(object):
     
     def get_dispersion_length(self, field):
         T_0 = get_duration(temporal_power(field), self.domain.dt)
-        L_D =  T_0**2 / (self.beta_2)
+        L_D =  abs(T_0**2 / (self.beta_2))
         return L_D
 
     # for usual fibre this info is in storage
