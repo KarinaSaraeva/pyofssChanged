@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2011, 2012  David Bolt, 
     2019-2021 Vladislav Efremov, Denis Kharenko
@@ -72,7 +71,6 @@ from .field import energy
 from .field import inst_freq
 from .field import loss_infrared_db
 from .field import loss_rayleigh_db
-from .field import add_noise 
 from .field import get_downsampled, get_duration, get_duration_spec
 
 # Import pulse width conversion function
