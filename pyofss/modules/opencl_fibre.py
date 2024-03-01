@@ -18,7 +18,6 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-
 import numpy as np
 import pyopencl as cl
 import pyopencl.array as cl_array
@@ -28,12 +27,13 @@ import pandas as pd
 
 from pyofss.field import fft, ifft, fftshift
 import sys as sys0
+
 version_py = sys0.version_info[0]
 if version_py == 3:
     from reikna import cluda
     from reikna.fft import FFT
 else:
-    from pyfft.cl import Plan  
+    from pyfft.cl import Plan
 from string import Template
 
 from .linearity import Linearity
@@ -43,10 +43,13 @@ from pyofss.field import temporal_power, get_duration
 from scipy.signal import find_peaks, peak_widths
 import warnings
 
+
 class FiberInitError(Exception):
     pass
 
-OPENCL_OPERATIONS = Template("""
+
+OPENCL_OPERATIONS = Template(
+    """
     #ifdef cl_arm_printf
         #pragma OPENCL EXTENSION cl_amd_printf: enable
     #endif
@@ -277,11 +280,14 @@ OPENCL_OPERATIONS = Template("""
         }
     }
 
-""")
+"""
+)
+
 
 class OpenclProgramm(object):
-    """" base program to work with GPU devices Openclfibre mus be initialised with this object """
-    def __init__(self, name="cl_programm", dorf='double', ctx=None, fast_math=False, use_all=False, downsampling=500):
+    """ " base program to work with GPU devices Openclfibre mus be initialised with this object"""
+
+    def __init__(self, name="cl_programm", dorf="double", ctx=None, fast_math=False, use_all=False, downsampling=500):
         self.cached_factor = False
         self.use_all = use_all
         self.dorf = dorf
@@ -316,7 +322,7 @@ class OpenclProgramm(object):
         self.simpson_result = None
 
     def cl_initialise(self):
-        """ Initialise opencl related parameters. """
+        """Initialise opencl related parameters."""
         float_conversions = {"float": np.float32, "double": np.float64}
         complex_conversions = {"float": np.complex64, "double": np.complex128}
 
@@ -329,7 +335,7 @@ class OpenclProgramm(object):
                 self.compiler_options = ["-cl-mad-enable", "-cl-fast-relaxed-math"]
             else:
                 self.compiler_options = ""
-        
+
         if self.ctx is None:
             self.ctx = cl.create_some_context()
 
@@ -345,26 +351,28 @@ class OpenclProgramm(object):
     def set_domain(self, domain):
         if self.plan is None:
             if version_py == 3:
-                self.plan = FFT(domain.t.astype(self.np_complex)).compile(self.thr, 
-                        fast_math=self.fast_math, compiler_options=self.compiler_options)
+                self.plan = FFT(domain.t.astype(self.np_complex)).compile(
+                    self.thr, fast_math=self.fast_math, compiler_options=self.compiler_options
+                )
                 self.plan.execute = self.reikna_fft_execute
             else:
-                self.plan = Plan(domain.total_samples, queue=self.queue, dtype=self.np_complex, fast_math=self.fast_math)
-            
+                self.plan = Plan(
+                    domain.total_samples, queue=self.queue, dtype=self.np_complex, fast_math=self.fast_math
+                )
+
         if self.domain is None:
             self.domain = domain
 
     def send_arrays_to_device(self, field, factor, h_R, nn_factor):
-        """ Move numpy arrays onto compute device. """
+        """Move numpy arrays onto compute device."""
         self.shape = field.shape
         self.cached_factor = False
         if self.buf_field is None:
-            self.buf_field = cl_array.to_device(
-                self.queue, field.astype(self.np_complex))
+            self.buf_field = cl_array.to_device(self.queue, field.astype(self.np_complex))
         else:
             print("reset")
             self.buf_field.set(field.astype(self.np_complex))
-            
+
         if self.buf_temp is None:
             self.buf_temp = cl_array.empty_like(self.buf_field)
         if self.buf_interaction is None:
@@ -379,28 +387,25 @@ class OpenclProgramm(object):
 
         if self.use_all:
             if self.buf_h_R is None:
-                self.buf_h_R = cl_array.to_device(
-                                        self.queue, h_R.astype(self.np_complex))
+                self.buf_h_R = cl_array.to_device(self.queue, h_R.astype(self.np_complex))
             else:
-                self.buf_h_R.set(h_R.astype(self.np_complex)) 
+                self.buf_h_R.set(h_R.astype(self.np_complex))
             if self.buf_nn_factor is None and nn_factor is not None:
-                self.buf_nn_factor = cl_array.to_device(
-                                        self.queue, nn_factor.astype(self.np_complex))
+                self.buf_nn_factor = cl_array.to_device(self.queue, nn_factor.astype(self.np_complex))
             elif nn_factor is not None:
-                 self.buf_nn_factor.set(nn_factor.astype(self.np_complex))     
+                self.buf_nn_factor.set(nn_factor.astype(self.np_complex))
             if self.buf_mod is None:
                 self.buf_mod = cl_array.empty_like(self.buf_field)
             if self.buf_conv is None:
                 self.buf_conv = cl_array.empty_like(self.buf_field)
         if self.cached_factor is False:
             if self.buf_factor is None:
-                self.buf_factor = cl_array.to_device(
-                    self.queue, factor.astype(self.np_complex))
+                self.buf_factor = cl_array.to_device(self.queue, factor.astype(self.np_complex))
             else:
                 self.buf_factor.set(factor.astype(self.np_complex))
 
     def reikna_fft_execute(self, d, inverse=False):
-        self.plan(d,d,inverse=inverse)
+        self.plan(d, d, inverse=inverse)
 
 
 def get_device_memory_info():
@@ -413,6 +418,7 @@ def get_device_memory_info():
     print("Used memory: {} MiB".format(info.used >> 20))
     nvmlShutdown()
 
+
 class OpenclFibre(object):
     """
     This optical module is similar to Fibre, but uses PyOpenCl (Python
@@ -422,14 +428,17 @@ class OpenclFibre(object):
         * cl_ss_symmetric
         * cl_ss_sym_rk4
     """
+
+    # fmt: off
     def __init__(self, cl_programm, name="cl_fibre", length=1.0, alpha=None,
-                 beta=None, gamma=0.0, method="cl_ss_symmetric", total_steps=100,
-                 self_steepening=False, centre_omega=None,
-                 tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18,
-                 small_signal_gain=None, E_sat=None, P_sat=None, Tr=None, lamb0=None, bandwidth=None, 
-                 use_Er_profile=False, use_Er_noise=False, 
-                 use_Yb_model=False, Pp_0 = None, N = None, Rr=None, save_represent="power", cycle='cycle0', traces=None, dir=None, amplifier=None):
-        
+                beta=None, gamma=0.0, method="cl_ss_symmetric", total_steps=100,
+                self_steepening=False, centre_omega=None,
+                tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18,
+                small_signal_gain=None, E_sat=None, P_sat=None, Tr=None, lamb0=None, bandwidth=None, 
+                use_Er_profile=False, use_Er_noise=False, 
+                use_Yb_model=False, Pp_0 = None, N = None, Rr=None, save_represent="power", 
+                cycle='cycle0', traces=None, dir=None, amplifier=None):
+    # fmt: on    
         self.cl_programm = cl_programm
 
         self.dir = dir
@@ -1000,10 +1009,10 @@ if __name__ == "__main__":
     from pyofss import power_buffer, multi_plot, labels, lambda_to_nu
 
     import time
-    
+
     print("*** Test of the default nonlinearity ***")
     # -------------------------------------------------------------------------
-    TS = 4096*16
+    TS = 4096 * 16
     GAMMA = 20.0
     BETA = [0.0, 0.0, 0.0, 22.0]
     STEPS = 800
@@ -1013,24 +1022,22 @@ if __name__ == "__main__":
 
     SYS = System(DOMAIN)
     SYS.add(Gaussian("gaussian", peak_power=1.0, width=1.0))
-    SYS.add(Fibre("fibre", beta=BETA, gamma=GAMMA,
-                  length=LENGTH, total_steps=STEPS, method="RK4IP"))
+    SYS.add(Fibre("fibre", beta=BETA, gamma=GAMMA, length=LENGTH, total_steps=STEPS, method="RK4IP"))
 
     start = time.time()
     SYS.run()
     stop = time.time()
-    NO_OCL_DURATION = (stop - start)
+    NO_OCL_DURATION = stop - start
     NO_OCL_OUT = SYS.fields["fibre"]
 
     sys = System(DOMAIN)
     sys.add(Gaussian("gaussian", peak_power=1.0, width=1.0))
-    sys.add(OpenclFibre("ocl_fibre", beta=BETA, gamma=GAMMA,
-                        length=LENGTH, total_steps=STEPS))
+    sys.add(OpenclFibre("ocl_fibre", beta=BETA, gamma=GAMMA, length=LENGTH, total_steps=STEPS))
 
     start = time.time()
     sys.run()
     stop = time.time()
-    OCL_DURATION = (stop - start)
+    OCL_DURATION = stop - start
     OCL_OUT = sys.fields["ocl_fibre"]
 
     NO_OCL_POWER = power_buffer(NO_OCL_OUT)
@@ -1039,7 +1046,7 @@ if __name__ == "__main__":
 
     MEAN_RELATIVE_ERROR = np.mean(np.abs(DELTA_POWER))
     MEAN_RELATIVE_ERROR /= np.max(power_buffer(NO_OCL_OUT))
-    
+
     MAX_RELATIVE_ERROR = np.max(np.abs(DELTA_POWER))
     MAX_RELATIVE_ERROR /= np.max(power_buffer(NO_OCL_OUT))
 
@@ -1049,8 +1056,14 @@ if __name__ == "__main__":
     print("Max relative error: %e" % MAX_RELATIVE_ERROR)
 
     # Expect both plots to appear identical:
-    multi_plot(SYS.domain.t, [NO_OCL_POWER, OCL_POWER], z_labels=['CPU','GPU'],
-                x_label=labels["t"], y_label=labels["P_t"], use_fill=False)
+    multi_plot(
+        SYS.domain.t,
+        [NO_OCL_POWER, OCL_POWER],
+        z_labels=["CPU", "GPU"],
+        x_label=labels["t"],
+        y_label=labels["P_t"],
+        use_fill=False,
+    )
 
     print("*** Test of the Raman response ***")
     # -------------------------------------------------------------------------
@@ -1059,37 +1072,56 @@ if __name__ == "__main__":
     GAMMA = 110.0
     BETA = [0.0, 0.0, -11.830]
     STEPS = 800
-    LENGTH = 50*1e-5
+    LENGTH = 50 * 1e-5
     WIDTH = 0.02836
 
-    N_sol = 3.
-    L_d = (WIDTH**2)/abs(BETA[2])
-    #L_nl = 1/(gamma*P_0)
-    L_nl = L_d/(N_sol**2)
-    P_0 = 1/(GAMMA*L_nl)
+    N_sol = 3.0
+    L_d = (WIDTH**2) / abs(BETA[2])
+    # L_nl = 1/(gamma*P_0)
+    L_nl = L_d / (N_sol**2)
+    P_0 = 1 / (GAMMA * L_nl)
 
     DOMAIN = Domain(bit_width=10.0, samples_per_bit=TS, centre_nu=lambda_to_nu(835.0))
 
     SYS = System(DOMAIN)
     SYS.add(Sech(peak_power=P_0, width=WIDTH))
-    SYS.add(Fibre("fibre", beta=BETA, gamma=GAMMA, self_steepening=False, use_all='hollenbeck',
-                  length=LENGTH, total_steps=STEPS, method="RK4IP"))
+    SYS.add(
+        Fibre(
+            "fibre",
+            beta=BETA,
+            gamma=GAMMA,
+            self_steepening=False,
+            use_all="hollenbeck",
+            length=LENGTH,
+            total_steps=STEPS,
+            method="RK4IP",
+        )
+    )
 
     start = time.time()
     SYS.run()
     stop = time.time()
-    NO_OCL_DURATION = (stop - start)
+    NO_OCL_DURATION = stop - start
     NO_OCL_OUT = SYS.fields["fibre"]
 
     sys = System(DOMAIN)
     sys.add(Sech(peak_power=P_0, width=WIDTH))
-    sys.add(OpenclFibre("ocl_fibre", beta=BETA, gamma=GAMMA, self_steepening=False, use_all='hollenbeck',
-                        length=LENGTH, total_steps=STEPS))
+    sys.add(
+        OpenclFibre(
+            "ocl_fibre",
+            beta=BETA,
+            gamma=GAMMA,
+            self_steepening=False,
+            use_all="hollenbeck",
+            length=LENGTH,
+            total_steps=STEPS,
+        )
+    )
 
     start = time.time()
     sys.run()
     stop = time.time()
-    OCL_DURATION = (stop - start)
+    OCL_DURATION = stop - start
     OCL_OUT = sys.fields["ocl_fibre"]
 
     NO_OCL_POWER = power_buffer(NO_OCL_OUT)
@@ -1098,7 +1130,7 @@ if __name__ == "__main__":
 
     MEAN_RELATIVE_ERROR = np.mean(np.abs(DELTA_POWER))
     MEAN_RELATIVE_ERROR /= np.max(power_buffer(NO_OCL_OUT))
-    
+
     MAX_RELATIVE_ERROR = np.max(np.abs(DELTA_POWER))
     MAX_RELATIVE_ERROR /= np.max(power_buffer(NO_OCL_OUT))
 
@@ -1108,66 +1140,117 @@ if __name__ == "__main__":
     print("Max relative error: %e" % MAX_RELATIVE_ERROR)
 
     # Expect both plots to appear identical:
-    multi_plot(SYS.domain.t, [NO_OCL_POWER, OCL_POWER], z_labels=['CPU','GPU'],
-                x_label=labels["t"], y_label=labels["P_t"], use_fill=False)
+    multi_plot(
+        SYS.domain.t,
+        [NO_OCL_POWER, OCL_POWER],
+        z_labels=["CPU", "GPU"],
+        x_label=labels["t"],
+        y_label=labels["P_t"],
+        use_fill=False,
+    )
 
     print("*** Test of the self-steepening contribution ***")
     # -------------------------------------------------------------------------
     # Dudley_SC, fig 8
     TS = 2**13
     GAMMA = 110.0
-    BETA = [0.0, 0.0, -11.830, 
-           8.1038e-2,  -9.5205e-5,   2.0737e-7,  
-          -5.3943e-10,  1.3486e-12, -2.5495e-15, 
-           3.0524e-18, -1.7140e-21]
+    BETA = [
+        0.0,
+        0.0,
+        -11.830,
+        8.1038e-2,
+        -9.5205e-5,
+        2.0737e-7,
+        -5.3943e-10,
+        1.3486e-12,
+        -2.5495e-15,
+        3.0524e-18,
+        -1.7140e-21,
+    ]
     STEPS = 800
-    LENGTH = 50*1e-5
+    LENGTH = 50 * 1e-5
     WIDTH = 0.010
-    P_0 = 3480.
-    
+    P_0 = 3480.0
+
     try:
-        clf = OpenclFibre("ocl_fibre", beta=BETA, gamma=GAMMA, self_steepening=True, use_all=False,
-                        dorf="double", length=LENGTH, total_steps=STEPS)
+        clf = OpenclFibre(
+            "ocl_fibre",
+            beta=BETA,
+            gamma=GAMMA,
+            self_steepening=True,
+            use_all=False,
+            dorf="double",
+            length=LENGTH,
+            total_steps=STEPS,
+        )
     except NotImplementedError:
         print("Not Implemented, skipped")
-    
+
     print("*** Test of the supercontinuum generation ***")
     # -------------------------------------------------------------------------
     # Dudley_SC, fig 3
     TS = 2**14
     GAMMA = 110.0
-    BETA = [0.0, 0.0, -11.830, 
-           8.1038e-2,  -9.5205e-5,   2.0737e-7,  
-          -5.3943e-10,  1.3486e-12, -2.5495e-15, 
-           3.0524e-18, -1.7140e-21]
+    BETA = [
+        0.0,
+        0.0,
+        -11.830,
+        8.1038e-2,
+        -9.5205e-5,
+        2.0737e-7,
+        -5.3943e-10,
+        1.3486e-12,
+        -2.5495e-15,
+        3.0524e-18,
+        -1.7140e-21,
+    ]
     STEPS = 10000
-    LENGTH = 15*1e-5
+    LENGTH = 15 * 1e-5
     WIDTH = 0.050
-    P_0 = 10000.
+    P_0 = 10000.0
     TAU_SHOCK = 0.56e-3
 
     DOMAIN = Domain(bit_width=10.0, samples_per_bit=TS, centre_nu=lambda_to_nu(835.0))
 
     SYS = System(DOMAIN)
     SYS.add(Sech(peak_power=P_0, width=WIDTH, using_fwhm=True))
-    SYS.add(Fibre("fibre", beta=BETA, gamma=GAMMA, self_steepening=TAU_SHOCK, use_all='hollenbeck',
-                  length=LENGTH, total_steps=STEPS, method="RK4IP"))
+    SYS.add(
+        Fibre(
+            "fibre",
+            beta=BETA,
+            gamma=GAMMA,
+            self_steepening=TAU_SHOCK,
+            use_all="hollenbeck",
+            length=LENGTH,
+            total_steps=STEPS,
+            method="RK4IP",
+        )
+    )
 
     start = time.time()
     SYS.run()
     stop = time.time()
-    NO_OCL_DURATION = (stop - start)
+    NO_OCL_DURATION = stop - start
     NO_OCL_OUT = SYS.fields["fibre"]
 
     sys = System(DOMAIN)
     sys.add(Sech(peak_power=P_0, width=WIDTH, using_fwhm=True))
-    sys.add(OpenclFibre("ocl_fibre", beta=BETA, gamma=GAMMA, self_steepening=TAU_SHOCK, use_all='hollenbeck',
-                        length=LENGTH, total_steps=STEPS))
+    sys.add(
+        OpenclFibre(
+            "ocl_fibre",
+            beta=BETA,
+            gamma=GAMMA,
+            self_steepening=TAU_SHOCK,
+            use_all="hollenbeck",
+            length=LENGTH,
+            total_steps=STEPS,
+        )
+    )
 
     start = time.time()
     sys.run()
     stop = time.time()
-    OCL_DURATION = (stop - start)
+    OCL_DURATION = stop - start
     OCL_OUT = sys.fields["ocl_fibre"]
 
     NO_OCL_POWER = power_buffer(NO_OCL_OUT)
@@ -1176,7 +1259,7 @@ if __name__ == "__main__":
 
     MEAN_RELATIVE_ERROR = np.mean(np.abs(DELTA_POWER))
     MEAN_RELATIVE_ERROR /= np.max(power_buffer(NO_OCL_OUT))
-    
+
     MAX_RELATIVE_ERROR = np.max(np.abs(DELTA_POWER))
     MAX_RELATIVE_ERROR /= np.max(power_buffer(NO_OCL_OUT))
 
@@ -1186,7 +1269,11 @@ if __name__ == "__main__":
     print("Max relative error: %e" % MAX_RELATIVE_ERROR)
 
     # Expect both plots to appear identical:
-    multi_plot(SYS.domain.t, [NO_OCL_POWER, OCL_POWER], z_labels=['CPU','GPU'],
-                x_label=labels["t"], y_label=labels["P_t"], use_fill=False)
-
-
+    multi_plot(
+        SYS.domain.t,
+        [NO_OCL_POWER, OCL_POWER],
+        z_labels=["CPU", "GPU"],
+        x_label=labels["t"],
+        y_label=labels["P_t"],
+        use_fill=False,
+    )

@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2011, 2012  David Bolt, 2020  Denis Kharenko
 
@@ -113,7 +112,7 @@ def dnu_to_dlambda(dnu, nu=193.1):
     Convert a small change in frequency to a small change in wavelength,
     with reference to centre frequency
     """
-    return Domain.vacuum_light_speed * dnu / (nu ** 2)
+    return Domain.vacuum_light_speed * dnu / (nu**2)
 
 
 def dlambda_to_dnu(dlambda, Lambda=1550.0):
@@ -126,7 +125,7 @@ def dlambda_to_dnu(dlambda, Lambda=1550.0):
     Convert a small change in wavelength to a small change in frequency,
     with reference to a centre wavelength
     """
-    return Domain.vacuum_light_speed * dlambda / (Lambda ** 2)
+    return Domain.vacuum_light_speed * dlambda / (Lambda**2)
 
 
 def align_with_nu_grid(nu, domain):
@@ -137,7 +136,7 @@ def align_with_nu_grid(nu, domain):
 
     Align value with the frequency grid to avoid spectral leakage effect
     """
-    return int(nu/domain.dnu)*domain.dnu
+    return int(nu / domain.dnu) * domain.dnu
 
 
 class Domain(object):
@@ -166,30 +165,25 @@ class Domain(object):
     .. note::
       Use of *Lambda*, and NOT the Python reserved word *lambda*
     """
+
     vacuum_light_speed = 1.0e-3 * constants.c  # nm / ps
 
-    def __init__(self, total_bits=1, samples_per_bit=512,
-                 bit_width=100.0, centre_nu=193.1, channels=1):
+    def __init__(self, total_bits=1, samples_per_bit=512, bit_width=100.0, centre_nu=193.1, channels=1):
 
         if not (0 < total_bits < 4096):
-            raise OutOfRangeError(
-                "total_bits is out of range. Must be in (0, 4096)")
+            raise OutOfRangeError("total_bits is out of range. Must be in (0, 4096)")
 
         if not (0 < samples_per_bit < 262144):
-            raise OutOfRangeError(
-                "samples_per_bit is out of range. Must be in (0, 262144)")
+            raise OutOfRangeError("samples_per_bit is out of range. Must be in (0, 262144)")
 
         if not (0.01 < bit_width < 10000.0):
-            raise OutOfRangeError(
-                "bit_width is out of range. Must be in (0.01, 10000.0)")
+            raise OutOfRangeError("bit_width is out of range. Must be in (0.01, 10000.0)")
 
         if not (140.0 < centre_nu < 600.0):
-            raise OutOfRangeError(
-                "centre_nu is out of range. Must be in (140.0, 600.0)")
+            raise OutOfRangeError("centre_nu is out of range. Must be in (140.0, 600.0)")
 
         if not (0 < channels < 3):
-            raise OutOfRangeError(
-                "channels is out of range. Must be in (0, 3)")
+            raise OutOfRangeError("channels is out of range. Must be in (0, 3)")
 
         if int(total_bits) != total_bits:
             raise NotIntegerError("total_bits must be an integer")
@@ -221,8 +215,7 @@ class Domain(object):
         # self.window_t, and to return a tuple (samples, step) instead of just
         # samples; where step is the spacing between samples.
 
-        (self.t, self.dt) = np.linspace(-self.window_t/2.0, self.window_t/2.0,
-                                        self.total_samples, False, True)
+        (self.t, self.dt) = np.linspace(-self.window_t / 2.0, self.window_t / 2.0, self.total_samples, False, True)
 
         # Require nu = [_nu_min, _nu_min + window_nu)
         #     = [centre_nu - 0.5 * window_nu, centre_nu + 0.5 * window_nu)
@@ -232,8 +225,7 @@ class Domain(object):
         # First value of nu (minimum value):
         _nu_min = self.centre_nu - 0.5 * self.window_nu
 
-        (self.nu, self.dnu) = np.linspace(_nu_min, _nu_min + self.window_nu,
-                                          self.total_samples, False, True)
+        (self.nu, self.dnu) = np.linspace(_nu_min, _nu_min + self.window_nu, self.total_samples, False, True)
 
         # Frequency values are in order. This convention is strict within
         # pyofss. If a calculation uses the frequency array then the values
@@ -245,20 +237,20 @@ class Domain(object):
         self.window_omega = 2.0 * pi * self.window_nu
 
         self.Lambda = Domain.vacuum_light_speed / self.nu
-        self.dlambda = \
-            Domain.vacuum_light_speed * self.dnu / (self.centre_nu ** 2)
-        self.window_lambda = \
-            Domain.vacuum_light_speed * self.window_nu / (self.centre_nu ** 2)
+        self.dlambda = Domain.vacuum_light_speed * self.dnu / (self.centre_nu**2)
+        self.window_lambda = Domain.vacuum_light_speed * self.window_nu / (self.centre_nu**2)
 
         self.channels = channels
 
     def __eq__(self, obj):
-        return isinstance(obj, Domain) and \
-                obj.total_bits == self.total_bits and \
-                obj.samples_per_bit == self.samples_per_bit and \
-                obj. bit_width == self.bit_width and \
-                obj.centre_nu == self.centre_nu and \
-                obj.channels == self.channels
+        return (
+            isinstance(obj, Domain)
+            and obj.total_bits == self.total_bits
+            and obj.samples_per_bit == self.samples_per_bit
+            and obj.bit_width == self.bit_width
+            and obj.centre_nu == self.centre_nu
+            and obj.channels == self.channels
+        )
 
     def __str__(self):
         """
@@ -268,18 +260,40 @@ class Domain(object):
         Output information on Domain.
         """
         output_string = [
-            'Domain:', 'total_bits = {0:d}', 'samples_per_bit = {1:d}',
-            'bit_width = {2:.4f} ps', 'centre_nu = {3:.4f} THz',
-            'total_samples = {4:d}', 'window_t = {5:.4f} ps',
-            'centre_omega = {6:.4f} rad / ps', 'centre_lambda = {7:.4f} nm',
-            'dt = {8:.4f} ps', 'window_nu = {9:.4f} THz',
-            'dnu = {10:.4f} THz', 'window_omega = {11:.4f} rad / ps',
-            'domega = {12:.4f} rad / ps', 'window_lambda = {13:.4f} nm',
-            'dlambda = {14:.4f} nm', 'channels = {15:d}']
+            "Domain:",
+            "total_bits = {0:d}",
+            "samples_per_bit = {1:d}",
+            "bit_width = {2:.4f} ps",
+            "centre_nu = {3:.4f} THz",
+            "total_samples = {4:d}",
+            "window_t = {5:.4f} ps",
+            "centre_omega = {6:.4f} rad / ps",
+            "centre_lambda = {7:.4f} nm",
+            "dt = {8:.4f} ps",
+            "window_nu = {9:.4f} THz",
+            "dnu = {10:.4f} THz",
+            "window_omega = {11:.4f} rad / ps",
+            "domega = {12:.4f} rad / ps",
+            "window_lambda = {13:.4f} nm",
+            "dlambda = {14:.4f} nm",
+            "channels = {15:d}",
+        ]
 
         return "\n\t".join(output_string).format(
-            self.total_bits, self.samples_per_bit, self.bit_width,
-            self.centre_nu, self.total_samples, self.window_t,
-            self.centre_omega, self.centre_lambda, self.dt, self.window_nu,
-            self.dnu, self.window_omega, self.domega, self.window_lambda,
-            self.dlambda, self.channels)
+            self.total_bits,
+            self.samples_per_bit,
+            self.bit_width,
+            self.centre_nu,
+            self.total_samples,
+            self.window_t,
+            self.centre_omega,
+            self.centre_lambda,
+            self.dt,
+            self.window_nu,
+            self.dnu,
+            self.window_omega,
+            self.domega,
+            self.window_lambda,
+            self.dlambda,
+            self.channels,
+        )

@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2011, 2012  David Bolt, 2019-2020 Vlad Efremov, Denis Kharenko
 
@@ -25,25 +24,27 @@ import matplotlib.animation as animation
 
 import subprocess
 
-labels = {"t": r"Time, $\t \, (ps)$",
-          "nu": r"Frequency, $\nu \, (THz)$",
-          "Lambda": r"Wavelength, $\lambda \, (nm)$",
-          "P_t": r"Power, $|A(z, t)|^2 \, (W)$",
-          "P_nu": r"Power, $|\tilde{A}(z, \nu)|^2 \, (a.u.)$",
-          "P_lambda": r"Power, $|\tilde{A}(z, \lambda|^2 \, (a.u.)$",
-          "z": r"Fibre length, $z \, (km)$",
-          "z_mm": r"Fibre length, $z \, (mm)$",
-          "phi": r"Phase, $\phi(t) \, (rad)$",
-          "chirp": r"Frequency chirp, $\delta \omega \, (rad / ps)$",
-          "t_normal": r"Normalised time, $\frac{t}{T_0}$",
-          "xi": r"Normalised distance, $\xi = \frac{z}{L_D}$",
-          "xi_prime": r"Normalised distance, $\xi' = \frac{z}{L_D'}$",
-          "inst_nu": r"Inst. frequency, $\nu \, (THz)$"}
+labels = {
+    "t": r"Time, $\t \, (ps)$",
+    "nu": r"Frequency, $\nu \, (THz)$",
+    "Lambda": r"Wavelength, $\lambda \, (nm)$",
+    "P_t": r"Power, $|A(z, t)|^2 \, (W)$",
+    "P_nu": r"Power, $|\tilde{A}(z, \nu)|^2 \, (a.u.)$",
+    "P_lambda": r"Power, $|\tilde{A}(z, \lambda|^2 \, (a.u.)$",
+    "z": r"Fibre length, $z \, (km)$",
+    "z_mm": r"Fibre length, $z \, (mm)$",
+    "phi": r"Phase, $\phi(t) \, (rad)$",
+    "chirp": r"Frequency chirp, $\delta \omega \, (rad / ps)$",
+    "t_normal": r"Normalised time, $\frac{t}{T_0}$",
+    "xi": r"Normalised distance, $\xi = \frac{z}{L_D}$",
+    "xi_prime": r"Normalised distance, $\xi' = \frac{z}{L_D'}$",
+    "inst_nu": r"Inst. frequency, $\nu \, (THz)$",
+}
 
 
-def map_plot(x, y, z, x_label="", y_label="", z_label="",
-             interpolation='lanczos', use_colour=True,
-             filename="", y_range=None):
+def map_plot(
+    x, y, z, x_label="", y_label="", z_label="", interpolation="lanczos", use_colour=True, filename="", y_range=None
+):
     """
     :param Dvector x: First axis
     :param Dvector y: Second axis
@@ -69,9 +70,9 @@ def map_plot(x, y, z, x_label="", y_label="", z_label="",
     else:
         cmap = cm.gray
 
-    im = plt.imshow(y, interpolation=interpolation, origin='lower',
-                    aspect='auto', cmap=cmap,
-                    extent=(x[0], x[-1], z[0], z[-1]))
+    im = plt.imshow(
+        y, interpolation=interpolation, origin="lower", aspect="auto", cmap=cmap, extent=(x[0], x[-1], z[0], z[-1])
+    )
 
     # Draw a colour bar showing mapping of colours to values for y-axis:
     cb = plt.colorbar(im, use_gridspec=True)
@@ -90,9 +91,9 @@ def map_plot(x, y, z, x_label="", y_label="", z_label="",
         plt.show()
 
 
-def waterfall_plot(x, y, z, x_label="", y_label="", z_label="",
-                   use_poly=True, alpha=0.2, filename="",
-                   y_range=None, x_range=None):
+def waterfall_plot(
+    x, y, z, x_label="", y_label="", z_label="", use_poly=True, alpha=0.2, filename="", y_range=None, x_range=None
+):
     """
     :param Dvector x: First axis
     :param Dvector y: Second axis
@@ -112,21 +113,23 @@ def waterfall_plot(x, y, z, x_label="", y_label="", z_label="",
     plt.clf()
 
     fig = plt.figure()
-    ax = fig.gca(projection='3d')
+    ax = fig.gca(projection="3d")
 
     data = [list(zip(x, y[n])) for n, z_n in enumerate(z)]
 
     if use_poly:
         from matplotlib.collections import PolyCollection
+
         # Parameter closed MUST be set False if axis does not start at zero:
         curves = PolyCollection(data, closed=False)
     else:
         from matplotlib.collections import LineCollection
+
         curves = LineCollection(data)
 
     curves.set_alpha(alpha)
 
-    ax.add_collection3d(curves, zs=z, zdir='y')
+    ax.add_collection3d(curves, zs=z, zdir="y")
 
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
@@ -153,10 +156,23 @@ def waterfall_plot(x, y, z, x_label="", y_label="", z_label="",
         plt.show()
 
 
-def single_plot(x, y, x_label="", y_label="", label="",
-                x_range=None, y_range=None, use_fill=True,
-                alpha=0.2, filename="", style="b-", fill_colour="b",
-                inst_freq=None, y2_label="", y2_range=None):
+def single_plot(
+    x,
+    y,
+    x_label="",
+    y_label="",
+    label="",
+    x_range=None,
+    y_range=None,
+    use_fill=True,
+    alpha=0.2,
+    filename="",
+    style="b-",
+    fill_colour="b",
+    inst_freq=None,
+    y2_label="",
+    y2_range=None,
+):
     """
     :param Dvector x: First axis
     :param Dvector y: Second axis
@@ -181,7 +197,7 @@ def single_plot(x, y, x_label="", y_label="", label="",
     # Disable the resizing feature
     fig.canvas.resizable = True
     # Change the toolbar position
-    fig.canvas.toolbar_position = 'top'
+    fig.canvas.toolbar_position = "top"
     ax1 = fig.add_subplot(111)
     ax1.plot(x, y, style, label=label)
 
@@ -211,10 +227,26 @@ def single_plot(x, y, x_label="", y_label="", label="",
         print("Wrote file", filename)
 
 
-def double_plot(x, y, X, Y, x_label="", y_label="", X_label="",
-                Y_label="", x_range=None, y_range=None, X_range=None,
-                Y_range=None, use_fill=True, alpha=0.2, filename="",
-                inst_freq=None, y2_label="", y2_range=None):
+def double_plot(
+    x,
+    y,
+    X,
+    Y,
+    x_label="",
+    y_label="",
+    X_label="",
+    Y_label="",
+    x_range=None,
+    y_range=None,
+    X_range=None,
+    Y_range=None,
+    use_fill=True,
+    alpha=0.2,
+    filename="",
+    inst_freq=None,
+    y2_label="",
+    y2_range=None,
+):
     """
     :param Dvector x: First axis of upper plot
     :param Dvector y: Second axis of upper plot
@@ -285,9 +317,19 @@ def double_plot(x, y, X, Y, x_label="", y_label="", X_label="",
         plt.show()
 
 
-def multi_plot(x, ys, zs=[], x_label="", y_label="",
-               z_labels=[""], x_range=None, y_range=None,
-               use_fill=True, alpha=0.2, filename=""):
+def multi_plot(
+    x,
+    ys,
+    zs=[],
+    x_label="",
+    y_label="",
+    z_labels=[""],
+    x_range=None,
+    y_range=None,
+    use_fill=True,
+    alpha=0.2,
+    filename="",
+):
     """
     :param Dvector x: First axis
     :param VDvector ys: Array of second axis
@@ -307,9 +349,9 @@ def multi_plot(x, ys, zs=[], x_label="", y_label="",
     plt.clf()
 
     if len(zs) < 6:
-        colours = ['blue', 'green', 'red', 'orange', 'purple']
+        colours = ["blue", "green", "red", "orange", "purple"]
     else:
-        colours = ['blue' for z in zs]
+        colours = ["blue" for z in zs]
 
     for n, y in enumerate(ys):
         if len(z_labels) > 1:
@@ -342,9 +384,9 @@ def multi_plot(x, ys, zs=[], x_label="", y_label="",
         plt.show()
 
 
-def quad_plot(x, ys, zs, x_label="", y_label="", z_labels=[""],
-              x_range=None, y_range=None,
-              use_fill=True, alpha=0.2, filename=""):
+def quad_plot(
+    x, ys, zs, x_label="", y_label="", z_labels=[""], x_range=None, y_range=None, use_fill=True, alpha=0.2, filename=""
+):
     """
     :param Dvector x: First axis
     :param VDvector ys: Array of second axis
@@ -363,18 +405,16 @@ def quad_plot(x, ys, zs, x_label="", y_label="", z_labels=[""],
     print("\nGenerating quad_plot...")
     plt.clf()
 
-    colours = ['blue', 'green', 'red', 'orange']
+    colours = ["blue", "green", "red", "orange"]
 
-    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, sharex=True,
-                                                 sharey=True)
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, sharex=True, sharey=True)
     axs = [ax1, ax2, ax3, ax4]
 
     for n, y in enumerate(ys):
         if len(z_labels) > 1:
             axs[n].plot(x, y, label=z_labels[n], color=colours[n])
         else:
-            axs[n].plot(x, y, label=z_labels[0].format(zs[n]),
-                        color=colours[n])
+            axs[n].plot(x, y, label=z_labels[0].format(zs[n]), color=colours[n])
 
         if use_fill:
             axs[n].fill_between(x, y, alpha=alpha, color=colours[n])
@@ -404,10 +444,22 @@ def quad_plot(x, ys, zs, x_label="", y_label="", z_labels=[""],
         plt.show()
 
 
-def animated_plot(x, y, z, x_label="", y_label="", z_label="",
-                  x_range=None, y_range=None, alpha=0.2, fps=5,
-                  clear_temp=True, frame_prefix=".tmp", filename="",
-                  use_logscale=False):
+def animated_plot(
+    x,
+    y,
+    z,
+    x_label="",
+    y_label="",
+    z_label="",
+    x_range=None,
+    y_range=None,
+    alpha=0.2,
+    fps=5,
+    clear_temp=True,
+    frame_prefix=".tmp",
+    filename="",
+    use_logscale=False,
+):
     """
     :param Dvector x: First axis
     :param VDvector y: Array of second axis
@@ -444,22 +496,20 @@ def animated_plot(x, y, z, x_label="", y_label="", z_label="",
     images = []
     for i in range(len(y)):
         if use_logscale is False:
-            line, = plt.plot(x, y[i], 'b-')
+            (line,) = plt.plot(x, y[i], "b-")
         else:
-            line, = plt.semilogy(x, y[i], 'b-')
+            (line,) = plt.semilogy(x, y[i], "b-")
         label = plt.legend([line], [z_label.format(z[i])])
         # The following line is necessary when using ani.save(), otherwise the
         # legend is only shown on the last frame!
         ax.add_artist(label)
-        fill = plt.fill_between(x, y[i], facecolor='blue', alpha=alpha)
+        fill = plt.fill_between(x, y[i], facecolor="blue", alpha=alpha)
         images.append((line, label, fill))
 
-    ani = animation.ArtistAnimation(fig, images, blit=True,
-                                    interval=1e3 / fps)
+    ani = animation.ArtistAnimation(fig, images, blit=True, interval=1e3 / fps)
 
     if filename:
-        ani.save(filename, fps=fps, clear_temp=clear_temp,
-                 frame_prefix=frame_prefix)
+        ani.save(filename, fps=fps, clear_temp=clear_temp, frame_prefix=frame_prefix)
         print("Wrote file", filename)
     else:
         plt.show()
@@ -473,28 +523,56 @@ def convert_video(filename, output="ogv"):
     Convert video to ogv, webm, or mp4 type.
     """
     import os
+
     out_file = os.path.splitext(filename)[0]
 
     if output == "ogv":
         # Use Theora/Vorbis codecs
-        command = ('ffmpeg2theora', '{0}'.format(filename))
+        command = ("ffmpeg2theora", "{0}".format(filename))
         # ~command = ('ffmpeg', '-i', '{0}'.format( filename ), '-b', '1500k',
-        #~'-vcodec', 'libtheora', '-acodec', 'libvorbis', '-ab',
-        #~'160000', '-g', '30',
+        # ~'-vcodec', 'libtheora', '-acodec', 'libvorbis', '-ab',
+        # ~'160000', '-g', '30',
         # ~'{0}'.format( '.'.join((out_file, output)) ))
     elif output == "webm":
         # Use VP8/Vobis codecs
-        command = ('ffmpeg', '-i', '{0}'.format(filename), '-b', '1500k',
-                   '-vcodec', 'libvpx', '-acodec', 'libvorbis', '-ab',
-                   '160000', '-f', 'webm', '-g', '30',
-                   '{0}'.format('.'.join([out_file, output])))
+        command = (
+            "ffmpeg",
+            "-i",
+            "{0}".format(filename),
+            "-b",
+            "1500k",
+            "-vcodec",
+            "libvpx",
+            "-acodec",
+            "libvorbis",
+            "-ab",
+            "160000",
+            "-f",
+            "webm",
+            "-g",
+            "30",
+            "{0}".format(".".join([out_file, output])),
+        )
     elif output == "mp4":
         # Use H.264/ACC codecs
-        command = ('ffmpeg', '-i', '{0}'.format(filename), '-b', '1500k',
-                   '-vcodec', 'libx264', '-vpre', 'slow', '-vpre', 'baseline',
-                   '-g', '30', '{0}'.format('.'.join([out_file, output])))
+        command = (
+            "ffmpeg",
+            "-i",
+            "{0}".format(filename),
+            "-b",
+            "1500k",
+            "-vcodec",
+            "libx264",
+            "-vpre",
+            "slow",
+            "-vpre",
+            "baseline",
+            "-g",
+            "30",
+            "{0}".format(".".join([out_file, output])),
+        )
 
-    print("\n\nConverting video using command:\n%s\n\n" % ' '.join(command))
+    print("\n\nConverting video using command:\n%s\n\n" % " ".join(command))
     subprocess.check_call(command)
 
-    print("\nWrote file", '.'.join([out_file, output]))
+    print("\nWrote file", ".".join([out_file, output]))

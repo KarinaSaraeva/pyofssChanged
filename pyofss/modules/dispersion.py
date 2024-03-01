@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2021 Denis Kharenko
 
@@ -23,19 +22,18 @@ from pyofss.field import fft, ifft
 
 from .linearity import Linearity
 
+
 class Dispersion(object):
 
-    def __init__(self, name = 'disp', beta=None, centre_omega=None):
+    def __init__(self, name="disp", beta=None, centre_omega=None):
         """
         :param array_like beta: Array of dispersion parameters
 
         Simply module provides dispersion shift
         """
         self.name = name
-        self.linearity = Linearity(
-                beta=beta, centre_omega=centre_omega)
+        self.linearity = Linearity(beta=beta, centre_omega=centre_omega)
 
     def __call__(self, domain, field):
         factor = self.linearity(domain)
-        return ifft( np.exp(factor) * fft(field) )
-
+        return ifft(np.exp(factor) * fft(field))

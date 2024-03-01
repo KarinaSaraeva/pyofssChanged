@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2011, 2012  David Bolt
 
@@ -37,9 +36,12 @@ class Bit(object):
 
     Each bit is represented by a pulse.
     """
+
+    # fmt: off
     def __init__(self, position=0.5, width=10.0, peak_power=1e-3,
                  offset_nu=0.0, m=1, C=0.0, initial_phase=0.0,
                  channel=0, using_fwhm=False):
+    # fmt: on
 
         self.data = {"position": position, "width": width,
                      "peak_power": peak_power, "offset_nu": offset_nu,
@@ -58,12 +60,12 @@ class Bit(object):
     def __call__(self):
         return self.data
 
-    #~def __repr__(self):
-        #~return "Bit with data:\n", self.data
+    # ~def __repr__(self):
+    # ~return "Bit with data:\n", self.data
 
 
 def generate_bitstream():
-    """ Generate a bitstream from a single bit. """
+    """Generate a bitstream from a single bit."""
     return [Bit()]
 
 
@@ -71,6 +73,7 @@ class Bit_stream(object):
     """
     A bit_stream consists of a number of bits.
     """
+
     def __init__(self):
 
         self.bits = []
@@ -85,8 +88,8 @@ class Bit_stream(object):
     def __add__(self, bit):
         self.add(bit)
 
-    #~def __repr__(self):
-        #~return "Bit stream containing bits:\n", self.bits
+    # ~def __repr__(self):
+    # ~return "Bit stream containing bits:\n", self.bits
 
 
 def generate_prbs(domain, bit=Bit(), power_jitter=0, ghost_power=0):
@@ -111,16 +114,15 @@ def generate_prbs(domain, bit=Bit(), power_jitter=0, ghost_power=0):
     mean_peak_power = bit["peak_power"]
 
     # One bits will have peak power in the range given by the following tuple:
-    one_range = (mean_peak_power * (1.0 - 0.01 * power_jitter),
-                 mean_peak_power * (1.0 + 0.01 * power_jitter))
+    one_range = (mean_peak_power * (1.0 - 0.01 * power_jitter), mean_peak_power * (1.0 + 0.01 * power_jitter))
 
     # Zero bits will have peak_power in range given by the following tuple:
     ghost_range = (0.0, 0.01 * ghost_power * mean_peak_power)
 
     # Output details:
-    #~print "mean_peak_power = %f W" % mean_peak_power
-    #~print "one_range = [%.5f, %.5f] W" % one_range
-    #~print "ghost_range = [%.5f, %.5f] W" % ghost_range
+    # ~print "mean_peak_power = %f W" % mean_peak_power
+    # ~print "one_range = [%.5f, %.5f] W" % one_range
+    # ~print "ghost_range = [%.5f, %.5f] W" % ghost_range
 
     # Store the relative position for each pulse within a bit width:
     relative_position = bit["position"]

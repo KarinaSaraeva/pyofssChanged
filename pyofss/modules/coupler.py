@@ -21,12 +21,13 @@
 from scipy import sqrt
 from pyofss.field import fft, ifft
 
+
 class Coupler(object):
     """
     Symmetric fiber coupler 2*2
     """
 
-    def __init__(self, name='coupler'):
+    def __init__(self, name="coupler"):
         self.name = name
         self.field = None
 
@@ -36,7 +37,6 @@ class Coupler(object):
         return self.field
 
     def matrix_oper(self, field_in1, field_in2):
-        field_out1 = sqrt(2.0)/2.0*(field_in1 + 1j*field_in2)
-        field_out2 = sqrt(2.0)/2.0*(1j*field_in1 + field_in2)
+        field_out1 = sqrt(2.0) / 2.0 * (field_in1 + 1j * field_in2)
+        field_out2 = sqrt(2.0) / 2.0 * (1j * field_in1 + field_in2)
         return [field_out1, field_out2]
-

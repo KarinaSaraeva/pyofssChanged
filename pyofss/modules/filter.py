@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2011, 2012  David Bolt, 2019, 2020 Vlad Efremov, Denis Kharenko
 
@@ -19,10 +18,11 @@
 """
 
 from numpy import exp, abs
+
 # Functions are deprecated and will be removed in SciPy 2.0.0
 try:
     from numpy.lib.scimath import power, log
-except ImportError:  #try import old syntax for compatibility reason
+except ImportError:  # try import old syntax for compatibility reason
     from scipy import power, log
 
 from pyofss.field import fft, ifft, ifftshift
@@ -57,24 +57,22 @@ class Filter(object):
     Generate a super-Gaussian filter. A HWIeM bandwidth is used internally; a
     FWHM bandwidth will be converted on initialisation.
     """
-    def __init__(self, name="filter", width_nu=0.1, offset_nu=0.0,
-                 m=1, channel=0, using_fwhm=False, type_filt = "reflected"):
+
+    def __init__(
+        self, name="filter", width_nu=0.1, offset_nu=0.0, m=1, channel=0, using_fwhm=False, type_filt="reflected"
+    ):
 
         if not (1e-6 < width_nu < 1e3):
-            raise OutOfRangeError(
-                "width_nu is out of range. Must be in (1e-6, 1e3)")
+            raise OutOfRangeError("width_nu is out of range. Must be in (1e-6, 1e3)")
 
         if not (-200.0 < offset_nu < 200.0):
-            raise OutOfRangeError(
-                "offset_nu is out of range. Must be in (-200.0, 200.0)")
+            raise OutOfRangeError("offset_nu is out of range. Must be in (-200.0, 200.0)")
 
         if not (0 < m < 50):
-            raise OutOfRangeError(
-                "m is out of range. Must be in (0, 50)")
+            raise OutOfRangeError("m is out of range. Must be in (0, 50)")
 
         if not (0 <= channel < 2):
-            raise OutOfRangeError(
-                "channel is out of range. Must be in [0, 2)")
+            raise OutOfRangeError("channel is out of range. Must be in [0, 2)")
 
         if int(m) != m:
             raise NotIntegerError("m must be an integer")
@@ -99,7 +97,7 @@ class Filter(object):
         self.field = None
 
     def calculate_fwhm(self):
-        """ Convert a HWIeM width to a FWHM width. """
+        """Convert a HWIeM width to a FWHM width."""
         if self.fwhm_nu is not None:
             return self.fwhm_nu
         else:
@@ -142,8 +140,7 @@ class Filter(object):
         Generate an array representing the filter power transfer function.
         """
         if len(nu) < 8:
-            raise OutOfRangeError(
-                "Require spectral array with at least 8 values")
+            raise OutOfRangeError("Require spectral array with at least 8 values")
 
         delta_nu = nu - centre_nu - self.offset_nu
         factor = power(delta_nu / self.width_nu, (2 * self.m))
@@ -159,17 +156,21 @@ class Filter(object):
         Output information on Filter.
         """
         output_string = [
-            'width_nu = {0:f} THz', 'fwhm_nu = {1:f} THz',
-            'offset_nu = {2:f} THz', 'm = {3:d}', 'channel = {4:d}',
-            'type_filt = {5:s}']
+            "width_nu = {0:f} THz",
+            "fwhm_nu = {1:f} THz",
+            "offset_nu = {2:f} THz",
+            "m = {3:d}",
+            "channel = {4:d}",
+            "type_filt = {5:s}",
+        ]
 
         return "\n".join(output_string).format(
-            self.width_nu, self.calculate_fwhm(),
-            self.offset_nu, self.m, self.channel,
-            self.type)
+            self.width_nu, self.calculate_fwhm(), self.offset_nu, self.m, self.channel, self.type
+        )
+
 
 if __name__ == "__main__":
-    """ Plot the power transfer function of the filter """
+    """Plot the power transfer function of the filter"""
     from pyofss import Domain, Filter, single_plot
 
     domain = Domain(centre_nu=193.0)

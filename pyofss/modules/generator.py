@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2011, 2012  David Bolt
 
@@ -57,6 +56,7 @@ class Generator(object):
     Generate a pulse with Gaussian or hyperbolic secant shape.
     Add this pulse to appropriate field, determined by channel.
     """
+
     def __init__(self, name="generator", bit_stream=None, channel=0):
         self.name = name
         self.bit_stream = bit_stream
@@ -91,14 +91,14 @@ class Generator(object):
 
             # Alternative: Only affect field of the current bit,
             # not the entire field:
-            #~spb = domain.samples_per_bit
-            #~bit_range = (b * spb, (b + 1) * spb)
+            # ~spb = domain.samples_per_bit
+            # ~bit_range = (b * spb, (b + 1) * spb)
 
-            #~if domain.channels > 1:
-                #~self.field[self.channel][bit_range[0]:bit_range[1]] += \
-                    #~self.shape.generate(domain.t)[bit_range[0]:bit_range[1]]
-            #~else:
-                #~self.field[bit_range[0]:bit_range[1]] += \
-                    #~self.shape.generate(domain.t)[bit_range[0]:bit_range[1]]
+            # ~if domain.channels > 1:
+            # ~self.field[self.channel][bit_range[0]:bit_range[1]] += \
+            # ~self.shape.generate(domain.t)[bit_range[0]:bit_range[1]]
+            # ~else:
+            # ~self.field[bit_range[0]:bit_range[1]] += \
+            # ~self.shape.generate(domain.t)[bit_range[0]:bit_range[1]]
 
         return self.field

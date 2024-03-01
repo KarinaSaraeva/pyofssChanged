@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2020 Vlad Efremov, Denis Kharenko
 
@@ -29,12 +28,12 @@ class Modulation(object):
 
         rho(P) = rho_max - (P/P_cr - 1)^2 * (rho_max - rho_min),
 
-    which is a quite good approximation for NPE-based artifisial saturable 
+    which is a quite good approximation for NPE-based artifisial saturable
     absorber [1,2].
 
     param string name: Name of this module
     param double Pcr: Critical power [W]
-    param double rho_max: Maximal transmission coefficient [a.u.] 
+    param double rho_max: Maximal transmission coefficient [a.u.]
                             (rho_min < rho_max < 1)
     param double rho_min: Minimal transmission at P=0 [a.u.]
                             (0 < rho_min < rho_max)
@@ -44,8 +43,7 @@ class Modulation(object):
 
     """
 
-    def __init__(self, name="modulation",
-                 Pcr=None, rho_max=None, rho_min=None):
+    def __init__(self, name="modulation", Pcr=None, rho_max=None, rho_min=None):
         self.name = name
         self.Pcr = Pcr
         self.rho_max = rho_max
@@ -54,7 +52,7 @@ class Modulation(object):
 
     def __call__(self, domain, field):
         P = temporal_power(field)
-        self.g = self.rho_max - ((P/self.Pcr - 1.)**2) * (self.rho_max - self.rho_min)
+        self.g = self.rho_max - ((P / self.Pcr - 1.0) ** 2) * (self.rho_max - self.rho_min)
         self.g = np.where(self.g < self.rho_min, self.rho_min, self.g)
-        self.g = np.sqrt( self.g )
+        self.g = np.sqrt(self.g)
         return field * self.g

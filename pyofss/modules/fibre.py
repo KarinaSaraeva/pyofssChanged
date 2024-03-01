@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2011, 2012  David Bolt
 
@@ -17,6 +16,7 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
+
 from scipy import power
 from scipy.signal import find_peaks, peak_widths
 from numpy import log10, amax, abs
@@ -70,18 +70,17 @@ class Fibre(object):
     local_error: Relative local error to aim for between propagtion points.
     """
 
-    def __init__(self, name="fibre", length=1.0, alpha=None,
-                 beta=None, gamma=0.0, sim_type=None, traces=1,
-                 local_error=1.0e-6, method="ss_symmetric", total_steps=100,
-                 self_steepening=False, raman_scattering=False,
-                 rs_factor=0.003, use_all=False, centre_omega=None,
-                 tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18, 
-                 small_signal_gain=None, E_sat=None, P_sat=None, Tr=None, lamb0=None, bandwidth=None, 
-                 use_Er_profile=False, use_Er_noise=False,
-                 use_Yb_model=False, Pp_0 = None, N = None, Rr=None,
+    # fmt: off
+    def __init__(self, name="fibre", length=1.0, alpha=None, beta=None, gamma=0.0, 
+                 sim_type=None, traces=1, local_error=1.0e-6, method="ss_symmetric", total_steps=100,
+                 self_steepening=False, raman_scattering=False, rs_factor=0.003, 
+                 use_all=False, centre_omega=None, tau_1=12.2e-3, tau_2=32.0e-3, 
+                 f_R=0.18, small_signal_gain=None, E_sat=None, P_sat=None, Tr=None,
+                 lamb0=None, bandwidth=None, use_Er_profile=False, use_Er_noise=False,
+                 use_Yb_model=False, Pp_0=None, N=None, Rr=None,
                  dir=None, save_represent="power", cycle=None, downsampling=None):
-
-        use_cache = not(method.upper().startswith('A'))
+    # fmt: on
+        use_cache = not (method.upper().startswith('A'))
 
         self.name = name
         self.length = length
@@ -120,14 +119,16 @@ class Fibre(object):
 
             def __call__(self, A, z):
                 return self.l(A, z) + self.n(A, z)
-            
+
         class FunctionCharacts():
             def __init__(self, l_d, l_nl):
                 self.l_d = l_d
                 self.l_nl = l_nl
 
-        self.function_step = FunctionStep(self.l, self.n, self.linear, self.nonlinear, self.amplifier_step)
-        self.function_characts = FunctionCharacts(self.get_dispersion_length, self.get_nonlinear_length)
+        self.function_step = FunctionStep(
+            self.l, self.n, self.linear, self.nonlinear, self.amplifier_step)
+        self.function_characts = FunctionCharacts(
+            self.get_dispersion_length, self.get_nonlinear_length)
 
         self.stepper = Stepper(traces, local_error, method, self.function_step, self.function_characts,
                                self.length, total_steps, dir, save_represent, cycle=self.cycle, fibre_name=self.name, downsampling=downsampling)
@@ -161,7 +162,7 @@ class Fibre(object):
     def nonlinear(self, A, h, B):
         """ Nonlinear term in exponential factor. """
         return self.nonlinearity.exp_non(A, h, B)
-    
+
     def amplifier_step(self, A, h):
         return self.linearity.amplification_step(A, h)
 
@@ -179,10 +180,10 @@ class Fibre(object):
         P_0 = amax(temporal_power(field))
         L_NL = 1 / (self.gamma * P_0)
         return L_NL
-    
+
     def get_dispersion_length(self, field):
         T_0 = get_duration(temporal_power(field), self.domain.dt)
-        L_D =  T_0**2 / abs(self.beta_2)
+        L_D = T_0**2 / abs(self.beta_2)
         return L_D
 
 
@@ -200,38 +201,69 @@ if __name__ == "__main__":
 
     import time
 
-    domain = Domain(bit_width=200.0, samples_per_bit=2048*2)
+    domain = Domain(bit_width=200.0, samples_per_bit=2048 * 2)
     gaussian = Gaussian(peak_power=1.0, width=1.0)
 
     P_ts = []
-    methods = ['ss_simple',
-               'ss_symmetric', 'ss_symmetric+ss', 'ss_symmetric+raman',  'ss_symmetric+all',
-               'ss_sym_rk4',
-               'rk4ip', 'rk4ip+ss', 'rk4ip+raman', 'rk4ip+all']
+    methods = [
+        "ss_simple",
+        "ss_symmetric",
+        "ss_symmetric+ss",
+        "ss_symmetric+raman",
+        "ss_symmetric+all",
+        "ss_sym_rk4",
+        "rk4ip",
+        "rk4ip+ss",
+        "rk4ip+raman",
+        "rk4ip+all",
+    ]
 
     for m in methods:
         sys = System(domain)
         sys.add(gaussian)
-        if m.count('+') == 0:
-            sys.add(Fibre(length=5.0, method=m, total_steps=50,
-                          beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0))
+        if m.count("+") == 0:
+            sys.add(Fibre(length=5.0, method=m, total_steps=50, beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0))
         else:
-            if m.split('+')[1] == 'ss':
-                sys.add(Fibre(length=5.0, method=m.split('+')[0], total_steps=50,
-                              beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0, self_steepening=True))
-            elif m.split('+')[1] == 'raman':
-                sys.add(Fibre(length=5.0, method=m.split('+')[0], total_steps=50,
-                              beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0, use_all='hollenbeck'))
+            if m.split("+")[1] == "ss":
+                sys.add(
+                    Fibre(
+                        length=5.0,
+                        method=m.split("+")[0],
+                        total_steps=50,
+                        beta=[0.0, 0.0, 0.0, 1.0],
+                        gamma=1.0,
+                        self_steepening=True,
+                    )
+                )
+            elif m.split("+")[1] == "raman":
+                sys.add(
+                    Fibre(
+                        length=5.0,
+                        method=m.split("+")[0],
+                        total_steps=50,
+                        beta=[0.0, 0.0, 0.0, 1.0],
+                        gamma=1.0,
+                        use_all="hollenbeck",
+                    )
+                )
             else:
-                sys.add(Fibre(length=5.0, method=m.split('+')[0], total_steps=50,
-                              beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0, self_steepening=True, use_all='hollenbeck'))
+                sys.add(
+                    Fibre(
+                        length=5.0,
+                        method=m.split("+")[0],
+                        total_steps=50,
+                        beta=[0.0, 0.0, 0.0, 1.0],
+                        gamma=1.0,
+                        self_steepening=True,
+                        use_all="hollenbeck",
+                    )
+                )
 
         start = time.time()
         sys.run()
         stop = time.time()
         P_ts.append(temporal_power(sys.field))
 
-        #print("Run time for {} method is {}".format(m, stop-start))
+        # print("Run time for {} method is {}".format(m, stop-start))
 
-    multi_plot(sys.domain.t, P_ts, methods, labels["t"], labels["P_t"],
-               methods, x_range=(-20.0, 40.0), use_fill=False)
+    multi_plot(sys.domain.t, P_ts, methods, labels["t"], labels["P_t"], methods, x_range=(-20.0, 40.0), use_fill=False)

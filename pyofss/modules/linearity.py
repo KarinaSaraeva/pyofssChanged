@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2012  David Bolt, 2020 Denis Kharenko
 
@@ -19,6 +18,7 @@
 """
 
 from scipy.constants import constants
+
 # factorial location changes in scipy 1.3
 try:
     from scipy.special import factorial
@@ -46,8 +46,8 @@ def convert_dispersion_to_physical(D=0.0, S=0.0, Lambda=1550.0):
         return (0.0, 0.0)
 
     # Constant 1.0e-3 modifies units of c to be nm / ps, see Domain.
-    factor = Lambda ** 2 / (2.0 * np.pi * 1.0e-3 * constants.c)
-    square_factor = factor ** 2
+    factor = Lambda**2 / (2.0 * np.pi * 1.0e-3 * constants.c)
+    square_factor = factor**2
 
     beta_2 = -factor * D
     beta_3 = square_factor * (S + (2.0 * D / Lambda))
@@ -68,7 +68,7 @@ def convert_dispersion_to_engineering(beta_2=0.0, beta_3=0.0, Lambda=1550.0):
     if (beta_2 == 0.0) and (beta_3 == 0.0):
         return (0.0, 0.0)
 
-    factor_1 = (2.0 * np.pi * 1.0e-3 * constants.c) / (Lambda ** 2)
+    factor_1 = (2.0 * np.pi * 1.0e-3 * constants.c) / (Lambda**2)
     square_factor_1 = factor_1 * factor_1
 
     factor_2 = (2.0 * factor_1) / Lambda
@@ -115,9 +115,18 @@ class Linearity(object):
 
     Dispersion is used by fibre to generate a fairly general dispersion array.
     """
-    def __init__(self, alpha=None, beta=None, sim_type=None,
-                 use_cache=False, centre_omega=None, phase_lim=False, 
-                 amplifier = None, use_Er_noise=False):
+
+    def __init__(
+        self,
+        alpha=None,
+        beta=None,
+        sim_type=None,
+        use_cache=False,
+        centre_omega=None,
+        phase_lim=False,
+        amplifier=None,
+        use_Er_noise=False,
+    ):
 
         self.alpha = alpha
         self.beta = beta
@@ -127,18 +136,14 @@ class Linearity(object):
         self.amplifier = amplifier
         self.use_Er_noise = use_Er_noise
 
-        self.generate_linearity = getattr(self, "%s_linearity" % sim_type,
-                                          self.default_linearity)
-        self.generate_cache = getattr(self, "%s_cache" % sim_type,
-                                          self.default_cache)
+        self.generate_linearity = getattr(self, "%s_linearity" % sim_type, self.default_linearity)
+        self.generate_cache = getattr(self, "%s_cache" % sim_type, self.default_cache)
         self.lin = getattr(self, "%s_f" % sim_type, self.default_f)
 
         if use_cache:
-            self.exp_lin = getattr(self, "%s_exp_f_cached" % sim_type,
-                                   self.default_exp_f_cached)
+            self.exp_lin = getattr(self, "%s_exp_f_cached" % sim_type, self.default_exp_f_cached)
         else:
-            self.exp_lin = getattr(self, "%s_exp_f" % sim_type,
-                                   self.default_exp_f)
+            self.exp_lin = getattr(self, "%s_exp_f" % sim_type, self.default_exp_f)
 
         # Allows storing of calculation involving an exponential. Provides a
         # significant speed increase if using a fixed step-size.
@@ -151,14 +156,14 @@ class Linearity(object):
         self.sigma_arr = []
 
     def __call__(self, domain):
-        self.domain = domain    
+        self.domain = domain
         return self.generate_linearity(domain)
 
     def default_linearity(self, domain):
         # Calculate dispersive terms:
         if self.amplifier is not None:
             self.amplifier.set_domain(domain)
-            
+
         if self.beta is None:
             self.factor = 0.0
         else:
@@ -186,11 +191,9 @@ class Linearity(object):
             self.factor = (0.0, 0.0)
         else:
             if self.centre_omega is None:
-                self.Domega = (domain.omega - domain.centre_omega,
-                               domain.omega - domain.centre_omega)
+                self.Domega = (domain.omega - domain.centre_omega, domain.omega - domain.centre_omega)
             else:
-                self.Domega = (domain.omega - self.centre_omega[0],
-                               domain.omega - self.centre_omega[1])
+                self.Domega = (domain.omega - self.centre_omega[0], domain.omega - self.centre_omega[1])
 
             terms = [0.0, 0.0]
             for n, beta in enumerate(self.beta[0]):
@@ -226,11 +229,10 @@ class Linearity(object):
         if self.phase_lim:
             hf0 = self._limit_imag_part(hf0)
             hf1 = self._limit_imag_part(hf1)
-        self.cached_factor = [np.exp(hf0),
-                              np.exp(hf1)]
+        self.cached_factor = [np.exp(hf0), np.exp(hf1)]
 
     def cache(self, h):
-        #print("Caching linear factor")
+        # print("Caching linear factor")
         self.generate_cache(h)
 
     def default_f(self, A, z):
@@ -242,61 +244,67 @@ class Linearity(object):
             hf = self._limit_imag_part(hf)
         if self.amplifier is None:
             return ifft(np.exp(hf) * fft(A))
-        else:        
-            amp_factor = self.amplifier.factor(A, h)   
+        else:
+            amp_factor = self.amplifier.factor(A, h)
             field = ifft(np.multiply(np.exp(amp_factor), np.exp(hf) * fft(A)))
             if self.use_Er_noise:
-                self.gain_arr.append(ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)]) # TODO: remove
-                noise = self.get_Er_noise(A, ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)])  
+                self.gain_arr.append(
+                    ifftshift(np.exp(2 * amp_factor))[int(self.domain.Lambda.shape[0] / 2)]
+                )  # TODO: remove
+                noise = self.get_Er_noise(A, ifftshift(np.exp(2 * amp_factor))[int(self.domain.Lambda.shape[0] / 2)])
                 field += noise
             return field
-    
+
     def default_exp_f_cached(self, A, h):
         if self.cached_factor is None:
             self.cache(h)
         if self.amplifier is None:
             return ifft(self.cached_factor * fft(A))
         else:
-            amp_factor = self.amplifier.factor(A, h)   
+            amp_factor = self.amplifier.factor(A, h)
             field = ifft(np.multiply(np.exp(amp_factor), self.cached_factor * fft(A)))
             if self.use_Er_noise:
-                self.gain_arr.append(ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)]) # TODO: remove
-                noise = self.get_Er_noise(A, ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)])  
+                self.gain_arr.append(
+                    ifftshift(np.exp(2 * amp_factor))[int(self.domain.Lambda.shape[0] / 2)]
+                )  # TODO: remove
+                noise = self.get_Er_noise(A, ifftshift(np.exp(2 * amp_factor))[int(self.domain.Lambda.shape[0] / 2)])
                 field += noise
             return field
-        
+
     def amplification_step(self, A, h):
         if self.amplifier is not None:
-            amp_factor = self.amplifier.factor(A, h)   
+            amp_factor = self.amplifier.factor(A, h)
             field = ifft(np.multiply(np.exp(amp_factor), fft(A)))
             if self.use_Er_noise:
-                self.gain_arr.append(ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)]) # TODO: remove
-                noise = self.get_Er_noise(A, ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)])  
+                self.gain_arr.append(
+                    ifftshift(np.exp(2 * amp_factor))[int(self.domain.Lambda.shape[0] / 2)]
+                )  # TODO: remove
+                noise = self.get_Er_noise(A, ifftshift(np.exp(2 * amp_factor))[int(self.domain.Lambda.shape[0] / 2)])
                 field += noise
             return field
         else:
             raise ValueError
-        
+
     def get_Er_noise(self, A, gain):
         # s_power = np.mean(temporal_power(A))
-        plank = 6.626e-10; # [W*ps^2]
+        plank = 6.626e-10
+        # [W*ps^2]
         NF_dB = 4.5
         NF = np.power(10, NF_dB / 10)
         n_sp = NF * gain / (2 * (gain - 1))
         nyu0 = self.domain.centre_nu
         h = self.domain.dt
         alfa = 1
-        sigma = np.sqrt(plank*nyu0*n_sp*(gain-1.0)*alfa/h)
-        self.sigma_arr.append(sigma) #!!!
+        sigma = np.sqrt(plank * nyu0 * n_sp * (gain - 1.0) * alfa / h)
+        self.sigma_arr.append(sigma)  #!!!
         re_noise = np.random.normal(loc=0.0, scale=sigma, size=A.shape)
         im_noise = np.random.normal(loc=0.0, scale=sigma, size=A.shape)
         noise = re_noise + 1j * im_noise
-      
+
         return noise
 
     def wdm_f(self, As, z):
-        return np.asarray([ifft(self.factor[0] * fft(As[0])),
-                           ifft(self.factor[1] * fft(As[1]))])
+        return np.asarray([ifft(self.factor[0] * fft(As[0])), ifft(self.factor[1] * fft(As[1]))])
 
     def wdm_exp_f(self, As, h):
         hf0 = h * self.factor[0]
@@ -304,11 +312,9 @@ class Linearity(object):
         if self.phase_lim:
             hf0 = self._limit_imag_part(hf0)
             hf1 = self._limit_imag_part(hf1)
-        return np.asarray([ifft(np.exp(hf0) * fft(As[0])),
-                           ifft(np.exp(hf1) * fft(As[1]))])
+        return np.asarray([ifft(np.exp(hf0) * fft(As[0])), ifft(np.exp(hf1) * fft(As[1]))])
 
     def wdm_exp_f_cached(self, As, h):
         if self.cached_factor is None:
             self.cache(h)
-        return np.asarray([ifft(self.cached_factor[0] * fft(As[0])),
-                           ifft(self.cached_factor[1] * fft(As[1]))])
+        return np.asarray([ifft(self.cached_factor[0] * fft(As[0])), ifft(self.cached_factor[1] * fft(As[1]))])

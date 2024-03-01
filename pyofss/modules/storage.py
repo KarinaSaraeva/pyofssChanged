@@ -23,7 +23,15 @@ import os
 import warnings
 
 from pyofss import field
-from pyofss.field import temporal_power, spectral_power, energy, get_duration, get_duration_spec, get_peaks, get_downsampled
+from pyofss.field import (
+    temporal_power,
+    spectral_power,
+    energy,
+    get_duration,
+    get_duration_spec,
+    get_peaks,
+    get_downsampled,
+)
 
 from scipy.signal import find_peaks
 
@@ -41,11 +49,14 @@ class DirExistenceError(StorageError):
 class DifferentAxisError(StorageError):
     pass
 
+
 class SavingWarning(Warning):
     pass
 
+
 class InvalidArgumentError(StorageError):
     """Raised when the type argument is not valid"""
+
     pass
 
 
@@ -65,23 +76,19 @@ def reduce_to_range(x, ys, first_value, last_value):
     if last_value > first_value:
 
         def find_nearest(array, value):
-            """ Return the index and value closest to those provided. """
+            """Return the index and value closest to those provided."""
             index = (np.abs(array - value)).argmin()
             return index, array[index]
 
         first_index, x_first = find_nearest(x, first_value)
         last_index, x_last = find_nearest(x, last_value)
 
-        print(
-            "Required range: [{0}, {1}]\nActual range: [{2}, {3}]".format(
-                first_value, last_value, x_first, x_last
-            )
-        )
+        print("Required range: [{0}, {1}]\nActual range: [{2}, {3}]".format(first_value, last_value, x_first, x_last))
 
         # The returned slice does NOT include the second index parameter. To
         # include the element corresponding to last_index, the second index
         # parameter should be last_index + 1:
-        sliced_x = x[first_index: last_index + 1]
+        sliced_x = x[first_index : last_index + 1]
 
         # ys is a list of arrays. Does each array contain additional arrays:
         import collections
@@ -89,13 +96,13 @@ def reduce_to_range(x, ys, first_value, last_value):
         if isinstance(ys[0][0], collections.Iterable):
             sliced_ys = [
                 [
-                    y_c0[first_index: last_index + 1],
-                    y_c1[first_index: last_index + 1],
+                    y_c0[first_index : last_index + 1],
+                    y_c1[first_index : last_index + 1],
                 ]
                 for (y_c0, y_c1) in ys
             ]
         else:
-            sliced_ys = [y[first_index: last_index + 1] for y in ys]
+            sliced_ys = [y[first_index : last_index + 1] for y in ys]
 
         return sliced_x, sliced_ys
     else:
@@ -166,11 +173,11 @@ class Storage(object):
 
     @staticmethod
     def reset_fft_counter():
-        """ Resets the global variable located in the field module. """
+        """Resets the global variable located in the field module."""
         field.fft_counter = 0
 
     def store_current_fft_count(self):
-        """ Store current value of the global variable in the field module. """
+        """Store current value of the global variable in the field module."""
         self.fft_total = field.fft_counter
 
     def append(self, z, A):
@@ -185,12 +192,12 @@ class Storage(object):
         self.update_characts(A)
 
     def update_characts(self, A):
-        """" 
+        """ "
         :param array_like A: Field at distance z
-        
-        updates the list of pulse characteristics appending new items to the characteristics lists 
+
+        updates the list of pulse characteristics appending new items to the characteristics lists
         """
-        
+
         self.energy_list.append(energy(A, self.domain.t))
         temporal_power_arr = temporal_power(A)
         spectral_power_arr = spectral_power(A)
@@ -203,13 +210,13 @@ class Storage(object):
 
     def save_all_storage_to_dir_as_df(
         self,
-        save_power = True,
+        save_power=True,
         channel=None,
     ):
         """
         :param boolean save_power: flag to save either the complex field as one dataframe or to save temporal and spectral intensity dataframes
-        
-        saves all field evolution along the fibre propagation 
+
+        saves all field evolution along the fibre propagation
         """
         if self.dir is not None:
             if save_power:
@@ -228,19 +235,19 @@ class Storage(object):
             else:
                 dir_complex = os.path.join(dir, "complex")
                 check_dir(dir_complex)
-                
+
                 df_complex = self.get_df("complex")
                 file_name_complex = os.path.join(dir_complex, f"{self.fibre_name}.csv")
                 df_complex.to_csv(file_name_complex)
 
             file_name_info = os.path.join(self.dir, f"current_info.txt")
 
-            with open(file_name_info, 'w') as f:
+            with open(file_name_info, "w") as f:
                 f.write(f"current cycle: {self.cycle}, current fibre: {self.fibre_name}")
         else:
             warnings.warn("Nothing will be saved - the base fibre directory is not stated!", SavingWarning)
 
-    def get_df(self, type = "complex", z_curr=0, channel=None):
+    def get_df(self, type="complex", z_curr=0, channel=None):
         if type == "temp":
             x, y, z = self.get_plot_data(is_temporal=True)
         elif type == "spec":
@@ -251,29 +258,35 @@ class Storage(object):
         else:
             raise InvalidArgumentError(f"{type} is not a valid argument, type param can be 'temp', 'spec' or 'complex'")
 
-        arr_z = np.array(z)*10**6 + z_curr # mm
+        arr_z = np.array(z) * 10**6 + z_curr  # mm
         if self.cycle and self.fibre_name is not None:
             iterables = [[self.cycle], [self.fibre_name], arr_z]
-            index = pd.MultiIndex.from_product(
-                iterables,  names=["cycle", "fibre", "z [mm]"])
+            index = pd.MultiIndex.from_product(iterables, names=["cycle", "fibre", "z [mm]"])
         else:
             iterables = [arr_z]
             index = pd.MultiIndex.from_product(iterables, names=["z [mm]"])
         return pd.DataFrame(y, index=index)
-    
+
     def get_df_result(
         self,
         z_curr=0,
     ):
         z = self.z
 
-        arr_z = np.array(z)*10**6 + z_curr
-        characteristic = ["Peak Power [W]", "Energy [nJ]", "Temp width [ps]", "Spec width [THz]", "Dispersion length [km]", "Nonlinear length [km]", "Peaks [idx]"]
+        arr_z = np.array(z) * 10**6 + z_curr
+        characteristic = [
+            "Peak Power [W]",
+            "Energy [nJ]",
+            "Temp width [ps]",
+            "Spec width [THz]",
+            "Dispersion length [km]",
+            "Nonlinear length [km]",
+            "Peaks [idx]",
+        ]
         if self.cycle and self.fibre_name is not None:
             iterables = [[self.cycle], [self.fibre_name], arr_z]
-            index = pd.MultiIndex.from_product(
-                iterables,  names=["cycle", "fibre", "z [mm]"])
-            
+            index = pd.MultiIndex.from_product(iterables, names=["cycle", "fibre", "z [mm]"])
+
         else:
             iterables = [arr_z]
             index = pd.MultiIndex.from_product(iterables, names=["z [mm]"])
@@ -394,13 +407,8 @@ class Storage(object):
             # If using complex data, require separate interpolation functions
             # for the real and imaginary parts. This is due to the used
             # routine being unable to process complex data type:
-            functions = [
-                (IUS(self.z, np.real(A)), IUS(self.z, np.imag(A)))
-                for A in As.transpose()
-            ]
-            As = np.vstack(
-                np.array(f(zs) + 1j * g(zs)) for f, g in functions
-            ).transpose()
+            functions = [(IUS(self.z, np.real(A)), IUS(self.z, np.imag(A))) for A in As.transpose()]
+            As = np.vstack(np.array(f(zs) + 1j * g(zs)) for f, g in functions).transpose()
         else:
             # Generate the interpolation functions for each column in As. This
             # is achieved by first transposing As, then calculating the

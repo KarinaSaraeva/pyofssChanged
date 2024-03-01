@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2011, 2012  David Bolt
 
@@ -19,10 +18,11 @@
 """
 
 from numpy import pi, exp, cosh
+
 # Functions are deprecated and will be removed in SciPy 2.0.0
 try:
     from numpy.lib.scimath import sqrt, log
-except ImportError:  #try import old syntax for compatibility reason
+except ImportError:  # try import old syntax for compatibility reason
     from scipy import sqrt, log
 
 
@@ -59,37 +59,40 @@ class Sech(object):
     internally; a FWHM pulse width will be converted on initialisation.
     """
 
-    def __init__(self, name="sech", position=0.0, width=10.0,
-                 peak_power=1e-3, offset_nu=0.0, m=0, C=0.0,
-                 initial_phase=0.0, channel=0, using_fwhm=False):
+    def __init__(
+        self,
+        name="sech",
+        position=0.0,
+        width=10.0,
+        peak_power=1e-3,
+        offset_nu=0.0,
+        m=0,
+        C=0.0,
+        initial_phase=0.0,
+        channel=0,
+        using_fwhm=False,
+    ):
 
         if not (-0.5 <= position <= 0.5):
-            raise OutOfRangeError(
-                "position is out of range. Must be in [-0.5, 0.5]")
+            raise OutOfRangeError("position is out of range. Must be in [-0.5, 0.5]")
 
         if not (1e-3 < width < 1e3):
-            raise OutOfRangeError(
-                "width is out of range. Must be in (1e-3, 1e3)")
+            raise OutOfRangeError("width is out of range. Must be in (1e-3, 1e3)")
 
         if not (0.0 <= peak_power < 1e9):
-            raise OutOfRangeError(
-                "peak_power is out of range. Must be in [0.0, 1e9)")
+            raise OutOfRangeError("peak_power is out of range. Must be in [0.0, 1e9)")
 
         if not (-200.0 < offset_nu < 200.0):
-            raise OutOfRangeError(
-                "offset_nu is out of range. Must be in (-200.0, 200.0)")
+            raise OutOfRangeError("offset_nu is out of range. Must be in (-200.0, 200.0)")
 
         if not (-1e3 < C < 1e3):
-            raise OutOfRangeError(
-                "C is out of range. Must be in (-1e3, 1e3)")
+            raise OutOfRangeError("C is out of range. Must be in (-1e3, 1e3)")
 
         if not (0.0 <= initial_phase < 2.0 * pi):
-            raise OutOfRangeError(
-                "initial_phase is out of range. Must be in [0.0, 2.0 * pi)")
+            raise OutOfRangeError("initial_phase is out of range. Must be in [0.0, 2.0 * pi)")
 
         if not (0 <= channel < 2):
-            raise OutOfRangeError(
-                "channel is out of range. Must be in [0, 2)")
+            raise OutOfRangeError("channel is out of range. Must be in [0, 2)")
 
         if int(channel) != channel:
             raise NotIntegerError("channel must be an integer")
@@ -112,7 +115,7 @@ class Sech(object):
         self.field = None
 
     def calculate_fwhm(self):
-        """ Convert a HWIeM width to a FWHM width. """
+        """Convert a HWIeM width to a FWHM width."""
         if self.fwhm is not None:
             return self.fwhm
         else:
@@ -127,8 +130,7 @@ class Sech(object):
         """
         self.field = field
 
-        t_normalised = \
-            (domain.t - self.position * domain.window_t) / self.width
+        t_normalised = (domain.t - self.position * domain.window_t) / self.width
         time = t_normalised * t_normalised
 
         phase = self.initial_phase
@@ -152,8 +154,7 @@ class Sech(object):
         Generate an array of complex values representing a Sech pulse.
         """
         if len(t) < 8:
-            raise OutOfRangeError(
-                "Require temporal array with at least 8 values")
+            raise OutOfRangeError("Require temporal array with at least 8 values")
 
         # Assume t[0] = t_0 and t[-1] = t_0 + t_range - dt,
         # with dt = t[1] - t[0]
@@ -175,16 +176,30 @@ class Sech(object):
         """
 
         output_string = [
-            'position = {0:f}', 'width = {1:f} ps', 'fwhm = {2:f} ps',
-            'peak_power = {3:f} W', 'offset_nu = {4:f} THz',
-            'C = {5:f}', 'initial_phase = {6:f} rad', 'channel = {7:d}']
+            "position = {0:f}",
+            "width = {1:f} ps",
+            "fwhm = {2:f} ps",
+            "peak_power = {3:f} W",
+            "offset_nu = {4:f} THz",
+            "C = {5:f}",
+            "initial_phase = {6:f} rad",
+            "channel = {7:d}",
+        ]
 
         return "\n".join(output_string).format(
-            self.position, self.width, self.calculate_fwhm(), self.peak_power,
-            self.offset_nu, self.C, self.initial_phase, self.channel)
+            self.position,
+            self.width,
+            self.calculate_fwhm(),
+            self.peak_power,
+            self.offset_nu,
+            self.C,
+            self.initial_phase,
+            self.channel,
+        )
+
 
 if __name__ == "__main__":
-    """ Plot a default Sech in temporal and spectral domain """
+    """Plot a default Sech in temporal and spectral domain"""
     from pyofss import Domain, System, Sech
     from pyofss import temporal_power, spectral_power
     from pyofss import double_plot, labels
@@ -193,6 +208,13 @@ if __name__ == "__main__":
     sys.add(Sech())
     sys.run()
 
-    double_plot(sys.domain.t, temporal_power(sys.field),
-                sys.domain.nu, spectral_power(sys.field, True),
-                labels["t"], labels["P_t"], labels["nu"], labels["P_nu"])
+    double_plot(
+        sys.domain.t,
+        temporal_power(sys.field),
+        sys.domain.nu,
+        spectral_power(sys.field, True),
+        labels["t"],
+        labels["P_t"],
+        labels["nu"],
+        labels["P_nu"],
+    )

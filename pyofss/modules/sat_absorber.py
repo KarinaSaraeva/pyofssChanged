@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2020 Vlad Efremov
 
@@ -19,6 +18,7 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+
 class Sat_absorber(object):
     "saturable absorber"
 
@@ -27,5 +27,5 @@ class Sat_absorber(object):
         self.power_sat = power_sat
 
     def __call__(self, domain, field):
-        q = self.deep/(1. + abs(field)**2/self.power_sat)
-        return field*(1. - q)
+        q = self.deep / (1.0 + abs(field) ** 2 / self.power_sat)
+        return field * (1.0 - q)

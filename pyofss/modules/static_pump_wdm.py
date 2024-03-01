@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2020 Vladislav Efremov, Denis Kharenko
 
@@ -23,12 +22,15 @@ import numpy as np
 from pyofss.field import fft, ifft, ifftshift, fftshift
 from pyofss.domain import lambda_to_nu
 
+
 # Define exceptions
 class StaticPumpWDMError(Exception):
     pass
 
+
 class DiffArraysError(StaticPumpWDMError):
     pass
+
 
 class StaticPumpWDM(object):
     """
@@ -45,8 +47,7 @@ class StaticPumpWDM(object):
     We use high-pass and low-pass notation implying frequencies rather that wavelengths
     """
 
-    def __init__(self, name = 'wdm', type_wdm = "lowpass",
-                 cutoff_nu = None, field_pump = None):
+    def __init__(self, name="wdm", type_wdm="lowpass", cutoff_nu=None, field_pump=None):
 
         self.name = name
         self.cutoff_nu = cutoff_nu
@@ -66,57 +67,55 @@ class StaticPumpWDM(object):
             if self.field_pump is not None:
                 self.field_pump = ifftshift(fft(self.field_pump))
                 if self.dir_to_up is True:
-                    self.field_pump[self.ind:] = 0.0
+                    self.field_pump[self.ind :] = 0.0
                 else:
-                    self.field_pump[:self.ind] = 0.0
+                    self.field_pump[: self.ind] = 0.0
             else:
                 self.field_pump = np.zeros(field.size, dtype=field.dtype)
 
         if not (len(self.field_pump) == len(field)):
-            raise DiffArraysError(
-                "arrays of fields is different lengths")
+            raise DiffArraysError("arrays of fields is different lengths")
 
         self.field = ifftshift(fft(field))
 
         if self.dir_to_up is True:
-            self.field[:self.ind] = 0.0
+            self.field[: self.ind] = 0.0
         else:
-            self.field[self.ind:] = 0.0
+            self.field[self.ind :] = 0.0
 
         return ifft(fftshift(self.field + self.field_pump))
 
 
 if __name__ == "__main__":
     from pyofss import *
-    cwl = 1030.0
-    domain = Domain(
-            centre_nu=lambda_to_nu(cwl),
-            samples_per_bit=1024*16,
-            bit_width = 1600.0)
-    ds = Diss_soliton(
-            width = 30.,
-            peak_power = 10.,
-            offset_nu = dlambda_to_dnu(5, cwl),
-            C = 60)
-    sech = Sech(
-            width = 10,
-            peak_power = 5.0,
-            offset_nu = -dlambda_to_dnu(10, cwl))
 
-    sys = System( domain )
-    sys.add( sech )
+    cwl = 1030.0
+    domain = Domain(centre_nu=lambda_to_nu(cwl), samples_per_bit=1024 * 16, bit_width=1600.0)
+    ds = Diss_soliton(width=30.0, peak_power=10.0, offset_nu=dlambda_to_dnu(5, cwl), C=60)
+    sech = Sech(width=10, peak_power=5.0, offset_nu=-dlambda_to_dnu(10, cwl))
+
+    sys = System(domain)
+    sys.add(sech)
     sys.run()
     field_pump = np.copy(sys.field)
     sys.clear()
 
-    wdm = StaticPumpWDM(type_wdm = "highpass", cutoff_nu = lambda_to_nu(1035.0), field_pump = field_pump)
+    wdm = StaticPumpWDM(type_wdm="highpass", cutoff_nu=lambda_to_nu(1035.0), field_pump=field_pump)
 
-    sys = System( domain )
-    sys.add( ds )
-    sys.add( wdm )
+    sys = System(domain)
+    sys.add(ds)
+    sys.add(wdm)
     sys.run()
 
-    double_plot( sys.domain.t, temporal_power( sys.field ),
-            sys.domain.Lambda, (spectral_power( sys.field )),
-            labels["t"], labels["P_t"], labels["Lambda"], labels["P_lambda"],
-            inst_freq = inst_freq(sys.field, sys.domain.dt), y2_label = labels["inst_nu"])
+    double_plot(
+        sys.domain.t,
+        temporal_power(sys.field),
+        sys.domain.Lambda,
+        (spectral_power(sys.field)),
+        labels["t"],
+        labels["P_t"],
+        labels["Lambda"],
+        labels["P_lambda"],
+        inst_freq=inst_freq(sys.field, sys.domain.dt),
+        y2_label=labels["inst_nu"],
+    )

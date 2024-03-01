@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2021 Vladislav Efremov
 
@@ -33,8 +32,8 @@ class Amplifier_ch(object):
 
     Simple amplifier provides gain on two channels are independent
     """
-    def __init__(self, name="amplifier_ch",
-                 gain=None, E_sat=None, P_sat=None, rep_rate=None):
+
+    def __init__(self, name="amplifier_ch", gain=None, E_sat=None, P_sat=None, rep_rate=None):
 
         if gain is None:
             raise Exception("The gain is not defined.")
@@ -50,7 +49,7 @@ class Amplifier_ch(object):
         elif P_sat is not None:
             if rep_rate is None:
                 raise Exception("Repetition rate is not defined.")
-            self.E_sat = 1e3*P_sat/rep_rate   #nJ
+            self.E_sat = 1e3 * P_sat / rep_rate  # nJ
         else:
             self.E_sat = None
 
@@ -68,10 +67,11 @@ class Amplifier_ch(object):
         # Calculate linear gain from logarithmic gain (G_dB -> G_linear)
         G = power(10, 0.1 * self.gain)
         if self.E_sat is not None:
-            G = G/(1.0 + (self.E_ch1 + self.E_ch2)/self.E_sat)
+            G = G / (1.0 + (self.E_ch1 + self.E_ch2) / self.E_sat)
         self.sqrt_G = sqrt(G)
 
         return field
+
 
 class Amplifier_ch_numb(object):
     """
@@ -81,7 +81,8 @@ class Amplifier_ch_numb(object):
 
     Providing gain field of channels.
     """
-    def __init__(self, name="amplifier_ch", numb_ch = 1, ampl_main = None):
+
+    def __init__(self, name="amplifier_ch", numb_ch=1, ampl_main=None):
         if not 0 < numb_ch < 3:
             raise Exception("Number of channel must be 1 or 2")
 
@@ -100,4 +101,3 @@ class Amplifier_ch_numb(object):
             return [field[0], ifft(self.field)]
         else:
             return [ifft(self.field), field[1]]
-

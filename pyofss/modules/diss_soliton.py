@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2020 Vlad Efremov
 
@@ -24,6 +23,7 @@ import numpy as np
 from scipy import sqrt, exp
 from pyofss import Sech
 
+
 class Diss_soliton(Sech):
     """
     :param string name: Name of this module
@@ -44,12 +44,22 @@ class Diss_soliton(Sech):
     internally; a FWHM pulse width will be converted on initialisation.
     """
 
-    def __init__ (self, name="diss_soliton", position=0.0, width=10.0,
-                 peak_power=1e-3, offset_nu=0.0, m=0, C=5.0,
-                 initial_phase=0.0, channel=0, using_fwhm=False):
-        super(Diss_soliton, self).__init__(name, position, width,
-             peak_power, offset_nu, m, C,
-             initial_phase, channel, using_fwhm)
+    def __init__(
+        self,
+        name="diss_soliton",
+        position=0.0,
+        width=10.0,
+        peak_power=1e-3,
+        offset_nu=0.0,
+        m=0,
+        C=5.0,
+        initial_phase=0.0,
+        channel=0,
+        using_fwhm=False,
+    ):
+        super(Diss_soliton, self).__init__(
+            name, position, width, peak_power, offset_nu, m, C, initial_phase, channel, using_fwhm
+        )
 
     def __call__(self, domain, field):
         """
@@ -62,15 +72,14 @@ class Diss_soliton(Sech):
         """
         self.field = field
 
-        t_normalised = \
-            (domain.t - self.position * domain.window_t) / self.width
+        t_normalised = (domain.t - self.position * domain.window_t) / self.width
 
         phase = self.initial_phase
         phase -= 2.0 * pi * self.offset_nu * domain.t
 
-        sechh = 1./np.cosh(t_normalised)
-        sechh = np.where(sechh != 0, np.power(sechh, 1+1j*self.C), 0.)
-        magnitude = sqrt(self.peak_power)*sechh
+        sechh = 1.0 / np.cosh(t_normalised)
+        sechh = np.where(sechh != 0, np.power(sechh, 1 + 1j * self.C), 0.0)
+        magnitude = sqrt(self.peak_power) * sechh
 
         if domain.channels > 1:
             self.field[self.channel] += magnitude * exp(1j * phase)
@@ -79,8 +88,9 @@ class Diss_soliton(Sech):
 
         return self.field
 
+
 if __name__ == "__main__":
-    """ Plot a default Diss_soliton in temporal and spectral domain """
+    """Plot a default Diss_soliton in temporal and spectral domain"""
     from pyofss import Domain, System, Diss_soliton
     from pyofss import temporal_power, spectral_power, inst_freq
     from pyofss import double_plot, labels
@@ -89,8 +99,15 @@ if __name__ == "__main__":
     sys.add(Diss_soliton())
     sys.run()
 
-    double_plot(sys.domain.t, temporal_power(sys.field),
-                sys.domain.nu, spectral_power(sys.field, True),
-                labels["t"], labels["P_t"], labels["nu"], labels["P_nu"],
-                inst_freq = inst_freq(sys.field, sys.domain.dt), y2_label=labels["inst_nu"])
-
+    double_plot(
+        sys.domain.t,
+        temporal_power(sys.field),
+        sys.domain.nu,
+        spectral_power(sys.field, True),
+        labels["t"],
+        labels["P_t"],
+        labels["nu"],
+        labels["P_nu"],
+        inst_freq=inst_freq(sys.field, sys.domain.dt),
+        y2_label=labels["inst_nu"],
+    )

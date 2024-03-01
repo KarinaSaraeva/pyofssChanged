@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2020 Vlad Efremov, Denis Kharenko
 
@@ -58,31 +57,34 @@ class Filter_doubl(object):
     Generate a double super-Gaussian filter. A HWIeM bandwidth is used internally; a
     FWHM bandwidth will be converted on initialisation.
     """
-    def __init__(self, name="filter_double", 
-                 width_nu1=0.1, width_nu2=1.0,
-                 relation=2. ,offset_nu=0.0,
-                 m=1, channel=0, using_fwhm=False,
-                 type_filt = "reflected"):
+
+    def __init__(
+        self,
+        name="filter_double",
+        width_nu1=0.1,
+        width_nu2=1.0,
+        relation=2.0,
+        offset_nu=0.0,
+        m=1,
+        channel=0,
+        using_fwhm=False,
+        type_filt="reflected",
+    ):
 
         if not (1e-6 < width_nu1 < 1e3):
-            raise OutOfRangeError(
-                "width_nu is out of range. Must be in (1e-6, 1e3)")
+            raise OutOfRangeError("width_nu is out of range. Must be in (1e-6, 1e3)")
 
         if not (1e-6 < width_nu2 < 1e3):
-            raise OutOfRangeError(
-                "width_nu is out of range. Must be in (1e-6, 1e3)")
+            raise OutOfRangeError("width_nu is out of range. Must be in (1e-6, 1e3)")
 
         if not (-200.0 < offset_nu < 200.0):
-            raise OutOfRangeError(
-                "offset_nu is out of range. Must be in (-200.0, 200.0)")
+            raise OutOfRangeError("offset_nu is out of range. Must be in (-200.0, 200.0)")
 
         if not (0 < m < 50):
-            raise OutOfRangeError(
-                "m is out of range. Must be in (0, 50)")
+            raise OutOfRangeError("m is out of range. Must be in (0, 50)")
 
         if not (0 <= channel < 2):
-            raise OutOfRangeError(
-                "channel is out of range. Must be in [0, 2)")
+            raise OutOfRangeError("channel is out of range. Must be in [0, 2)")
 
         if not (relation > 0):
             raise OutOfRangeError("relation must be a positive")
@@ -102,14 +104,14 @@ class Filter_doubl(object):
         self.fwhm_nu = None
         self.type = type_filt
 
-        self.a1 = 1./(relation + 1.)
-        self.a2 = relation/(relation + 1.)
+        self.a1 = 1.0 / (relation + 1.0)
+        self.a2 = relation / (relation + 1.0)
 
         self.shape = None
         self.field = None
 
     def calculate_fwhm(self):
-        """ Convert a HWIeM width to a FWHM width. """
+        """Convert a HWIeM width to a FWHM width."""
         if self.fwhm_nu is not None:
             return self.fwhm_nu
         else:
@@ -129,7 +131,7 @@ class Filter_doubl(object):
         factor1 = power(delta_nu / self.width_nu1, (2 * self.m))
         factor2 = power(delta_nu / self.width_nu2, (2 * self.m))
         # Frequency values are in order, inverse shift to put in fft order:
-        self.shape = self.a1*exp(-0.5 * ifftshift(factor1)) + self.a2*exp(-0.5 * ifftshift(factor2))
+        self.shape = self.a1 * exp(-0.5 * ifftshift(factor1)) + self.a2 * exp(-0.5 * ifftshift(factor2))
 
         if domain.channels > 1:
             # Filter is applied only to one channel:
@@ -153,13 +155,12 @@ class Filter_doubl(object):
         Generate an array representing the filter power transfer function.
         """
         if len(nu) < 8:
-            raise OutOfRangeError(
-                "Require spectral array with at least 8 values")
+            raise OutOfRangeError("Require spectral array with at least 8 values")
 
         delta_nu = nu - centre_nu - self.offset_nu
         factor1 = power(delta_nu / self.width_nu1, (2 * self.m))
         factor2 = power(delta_nu / self.width_nu2, (2 * self.m))
-        self.shape = self.a1*exp(-0.5 * factor1) + self.a2*exp(-0.5 * factor2)
+        self.shape = self.a1 * exp(-0.5 * factor1) + self.a2 * exp(-0.5 * factor2)
 
         return np.abs(self.shape) ** 2
 
@@ -171,20 +172,23 @@ class Filter_doubl(object):
         Output information on Filter.
         """
         output_string = [
-            'amplitude1 = {0:f}', 'amplitude2 = {1:f}',
-            'width_nu1 = {2:f} THz', 'width_nu2 = {3:f} THz',
-            'offset_nu = {4:f} THz', 'm = {5:d}', 'channel = {6:d}',
-            'type_filt = {7:s}']
+            "amplitude1 = {0:f}",
+            "amplitude2 = {1:f}",
+            "width_nu1 = {2:f} THz",
+            "width_nu2 = {3:f} THz",
+            "offset_nu = {4:f} THz",
+            "m = {5:d}",
+            "channel = {6:d}",
+            "type_filt = {7:s}",
+        ]
 
         return "\n".join(output_string).format(
-            self.a1, self.a2,
-            self.width_nu1, self.width_nu2,
-            self.offset_nu, self.m, self.channel,
-            self.type)
+            self.a1, self.a2, self.width_nu1, self.width_nu2, self.offset_nu, self.m, self.channel, self.type
+        )
 
 
 if __name__ == "__main__":
-    """ Plot the power transfer function of the filter """
+    """Plot the power transfer function of the filter"""
     from pyofss import Domain, Filter_doubl, single_plot
 
     domain = Domain(centre_nu=193.0)

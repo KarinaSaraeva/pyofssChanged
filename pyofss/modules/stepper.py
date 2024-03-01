@@ -20,6 +20,7 @@
 import warnings
 import numpy as np
 from scipy import linalg
+
 # from tqdm import tqdm
 from pyofss.field import temporal_power
 
@@ -83,8 +84,21 @@ class Stepper(object):
          values for equally spaced z-values, calculated using traces.
     """
 
-    def __init__(self, traces=1, local_error=1.0e-6, method="RK4",
-                 f=None, f_characts=None, length=1.0, total_steps=100, dir=None, save_represent="power", cycle=None, fibre_name=None, downsampling=None):
+    def __init__(
+        self,
+        traces=1,
+        local_error=1.0e-6,
+        method="RK4",
+        f=None,
+        f_characts=None,
+        length=1.0,
+        total_steps=100,
+        dir=None,
+        save_represent="power",
+        cycle=None,
+        fibre_name=None,
+        downsampling=None,
+    ):
         self.traces = traces
         self.local_error = local_error
         try:
@@ -112,7 +126,8 @@ class Stepper(object):
 
         # Use a list of tuples ( z, A(z) ) for dense output if required:
         self.storage = Storage(
-            dir, cycle=self.cycle, fibre_name=self.fibre_name, f=f_characts, downsampling=downsampling)
+            dir, cycle=self.cycle, fibre_name=self.fibre_name, f=f_characts, downsampling=downsampling
+        )
 
         # Store constants for adaptive method:
         self.total_attempts = 1000
@@ -124,13 +139,13 @@ class Stepper(object):
         self.min_factor = 0.2
 
         # Store local error of method:
-        if (self.method.lower() != "step_amplifier"):
+        if self.method.lower() != "step_amplifier":
             self.eta = self.solver.errors[self.method.lower()]
 
         self.A_out = None
 
     def __call__(self, A, refrence_length):
-        """ Delegate to appropriate function, adaptive- or standard-stepper """
+        """Delegate to appropriate function, adaptive- or standard-stepper"""
 
         self.storage.reset_fft_counter()
         self.storage.reset_array()
@@ -139,7 +154,7 @@ class Stepper(object):
             return self.adaptive_stepper(A, refrence_length)
         else:
             return self.standard_stepper(A, refrence_length)
-        
+
     def save_df_power(self):
         self.storage.save_all_storage_to_dir_as_df(save_power=True)
 
@@ -147,7 +162,7 @@ class Stepper(object):
         self.storage.save_all_storage_to_dir_as_df(save_power=False)
 
     def standard_stepper(self, A, refrence_length):
-        """ Take a fixed number of steps, each of equal length """
+        """Take a fixed number of steps, each of equal length"""
         # ~print( "Starting ODE integration with fixed step-size... " ),
 
         # Initialise:
@@ -190,14 +205,14 @@ class Stepper(object):
             # value:
             if self.traces != 1:
                 # MODIFIED: If multiple traces required, store A_out at z only IF needed
-                if (i % storage_step == 0):
+                if i % storage_step == 0:
                     self.storage.append(z + h, self.A_out)
 
         # Store total number of fft and ifft operations that were used:
         self.storage.store_current_fft_count()
 
         # Need to interpolate dense output to grid points set by traces:
-        
+
         # MODIFIED: no longer needed
         # if self.traces > 1 and (self.traces != self.total_steps):
         #     self.storage.interpolate_As_for_z_values(trace_zs)
@@ -205,7 +220,7 @@ class Stepper(object):
         self.save_df()
 
         return self.A_out
-    
+
     def save_power(self):
         self.storage.save_all_storage_to_dir_as_df(save_power=True)
 
@@ -214,7 +229,7 @@ class Stepper(object):
 
     @staticmethod
     def relative_local_error(A_fine, A_coarse):
-        """ Calculate an estimate of the relative local error """
+        """Calculate an estimate of the relative local error"""
 
         # Large step can result in infs or NaNs values
         # so, check it first
@@ -230,7 +245,7 @@ class Stepper(object):
             return linalg.norm(A_fine - A_coarse)
 
     def adaptive_stepper(self, A, refrence_length):
-        """ Take multiple steps, with variable length, until target reached """
+        """Take multiple steps, with variable length, until target reached"""
 
         print("Starting ODE integration with adaptive step-size... ")
 
@@ -245,7 +260,7 @@ class Stepper(object):
 
         # if (h > 0.01*refrence_length):
         #     h = 0.01*refrence_length
-        if (h > 1e-6):
+        if h > 1e-6:
             h = 1e-6
 
         print(f"initial step size equals {h}")
@@ -271,7 +286,7 @@ class Stepper(object):
 
         # Limit the number of steps in case of slowly converging runs:
         # for s in tqdm(range(1, self.steps_max)):
-        for s in (range(1, self.steps_max)):
+        for s in range(1, self.steps_max):
             # If step-size takes z our of range [0.0, length], then correct it:
             if (z + h) > self.length:
                 h = self.length - z
@@ -302,18 +317,14 @@ class Stepper(object):
                 # Adjust stepsize for next step:
                 if delta > 0.0:
                     error_ratio = self.local_error / delta
-                    factor = self.safety * np.power(
-                        error_ratio, 1.0 / self.eta
-                    )
-                    h = h_temp * min(
-                        self.max_factor, max(self.min_factor, factor)
-                    )
+                    factor = self.safety * np.power(error_ratio, 1.0 / self.eta)
+                    h = h_temp * min(self.max_factor, max(self.min_factor, factor))
                 else:
                     # Error approximately zero, so use largest stepsize
                     # increase:
                     h = h_temp * self.max_factor
 
-                if (delta < 2.0 * self.local_error):
+                if delta < 2.0 * self.local_error:
                     # Successful step, so increment z h_temp (which is the
                     # stepsize that was used for this step):
                     z += h_temp
@@ -328,7 +339,7 @@ class Stepper(object):
 
                     # Store data on current z and stepsize used for each
                     # succesful step:
-                    if (z > z_ignore):
+                    if z > z_ignore:
                         self.storage.step_sizes.append((z, h_temp))
                         self.storage.append(z, self.A_out)
                         z_ignore += step_storage
@@ -337,44 +348,38 @@ class Stepper(object):
                 # but check the minimal step size first
                 else:
                     if h < self.step_size_min:
-                        raise SmallStepSizeError(
-                            "Step size is extremely small"
-                        )
+                        raise SmallStepSizeError("Step size is extremely small")
 
             else:
-                raise SuitableStepSizeError(
-                    "Failed to set suitable step-size"
-                )
+                raise SuitableStepSizeError("Failed to set suitable step-size")
 
             # If the desired z has been reached, then finish:
             if z >= self.length:
                 # Store total number of fft and ifft operations that were used:
                 self.storage.store_current_fft_count()
 
-                # MODIFIED: no longer needed   
+                # MODIFIED: no longer needed
                 # Interpolate dense output to uniformly-spaced z values:
                 # if self.traces > 1:
                 #     self.storage.interpolate_As_for_z_values(zs)
-                if (self.storage.dir_spec and self.storage.dir_temp):
-                    if (self.save_represent == "power"):
+                if self.storage.dir_spec and self.storage.dir_temp:
+                    if self.save_represent == "power":
                         self.storage.save_all_storage_to_dir_as_df(save_power=True)
-                    elif (self.save_represent == "complex"):
+                    elif self.save_represent == "complex":
                         self.storage.save_all_storage_to_dir_as_df(save_power=False)
                     else:
-                        print(f"flag should be one of these: 'power', 'complex'") 
+                        print(f"flag should be one of these: 'power', 'complex'")
                 return self.A_out
 
             total_amount_of_steps = total_amount_of_steps + 1
 
-        raise MaximumStepsAllocatedError(
-            "Failed to complete with maximum steps allocated"
-        )
+        raise MaximumStepsAllocatedError("Failed to complete with maximum steps allocated")
 
 
 if __name__ == "__main__":
     """
     Exact solution: A(z) = 0.5 * ( 5.0 * exp(-2.0 * z) - 3.0 * exp(-4.0 * z) )
-    A(0) = 1.0 
+    A(0) = 1.0
     A(0.5) = 0.71669567807368684
     Numerical solution (RK4, total_steps = 5):      0.71668876283331295
     Numerical solution (RK4, total_steps = 50):     0.71669567757603803
@@ -386,12 +391,10 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
     def simple(A, z):
-        """ Just a simple function. """
+        """Just a simple function."""
         return 3.0 * np.exp(-4.0 * z) - 2.0 * A
 
-    stepper = Stepper(
-        f=simple, length=0.5, total_steps=50, method="RKF", traces=50
-    )
+    stepper = Stepper(f=simple, length=0.5, total_steps=50, method="RKF", traces=50)
     A_in = 1.0
     A_out = stepper(A_in)
     print("A_out = %.17f" % (A_out))

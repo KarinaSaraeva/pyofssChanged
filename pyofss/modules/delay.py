@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2020 Vlad Efremov
 
@@ -21,9 +20,10 @@
 import numpy as np
 from pyofss.field import fft, ifft, fftshift
 
+
 class Delay(object):
 
-    def __init__(self, name = 'delay', time = 0.0):
+    def __init__(self, name="delay", time=0.0):
         """
         param time: the delay value
 
@@ -35,7 +35,6 @@ class Delay(object):
     def __call__(self, domain, field):
 
         self.Domega = domain.omega - domain.centre_omega
-        self.factor = 1j*fftshift( self.time*self.Domega )
+        self.factor = 1j * fftshift(self.time * self.Domega)
 
-        return ifft( np.exp(self.factor) * fft(field) )
-
+        return ifft(np.exp(self.factor) * fft(field))

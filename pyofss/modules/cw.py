@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2011, 2012  David Bolt
 
@@ -32,8 +31,8 @@ class Cw(object):
 
     Generate a continuous wave (CW) source. Add this to appropriate field.
     """
-    def __init__(self, name="cw", peak_power=0.0, offset_nu=0.0,
-                 initial_phase=0.0, channel=0):
+
+    def __init__(self, name="cw", peak_power=0.0, offset_nu=0.0, initial_phase=0.0, channel=0):
 
         self.name = name
         self.peak_power = peak_power

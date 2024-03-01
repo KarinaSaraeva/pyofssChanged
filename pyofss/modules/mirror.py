@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2020 Vladislav Efremov
     
@@ -24,8 +23,7 @@ from pyofss.field import fft, ifft
 
 class Mirror(object):
 
-
-    def __init__(self, name = 'mirror' , centre_nu = 290.0, slope = 5000.0):
+    def __init__(self, name="mirror", centre_nu=290.0, slope=5000.0):
 
         self.name = name
         self.centre_nu = centre_nu
@@ -35,7 +33,7 @@ class Mirror(object):
 
         self.field = fft(field[0])
 
-        factor = 1.0 / ( np.exp( self.slope*(domain.nu/self.centre_nu - 1.0) ) + 1.0 )
+        factor = 1.0 / (np.exp(self.slope * (domain.nu / self.centre_nu - 1.0)) + 1.0)
         self.field *= factor
         self.field = ifft(self.field)
 
@@ -45,14 +43,12 @@ class Mirror(object):
 if __name__ == "__main__":
     from pyofss import *
 
-    domain = Domain(centre_nu=193.0, samples_per_bit=1024*16,
-                    bit_width = 1600.0, channels = 2)
-    ds = Diss_soliton(width = 120., peak_power = 10., C = 600)
-    mr = Mirror(centre_nu = domain.centre_nu)
-    sys = System( domain )
-    sys.add( ds )
-    sys.add( mr )
+    domain = Domain(centre_nu=193.0, samples_per_bit=1024 * 16, bit_width=1600.0, channels=2)
+    ds = Diss_soliton(width=120.0, peak_power=10.0, C=600)
+    mr = Mirror(centre_nu=domain.centre_nu)
+    sys = System(domain)
+    sys.add(ds)
+    sys.add(mr)
     sys.run()
 
-    double_plot( domain.nu, spectral_power(sys.field[0]),
-                 domain.nu, spectral_power(sys.field[1]))
+    double_plot(domain.nu, spectral_power(sys.field[0]), domain.nu, spectral_power(sys.field[1]))

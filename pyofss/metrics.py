@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2011, 2012  David Bolt
 
@@ -35,11 +34,11 @@ def generate_eye_data(domain, field, scale=None):
     trace consists of the power array calculated for successive bits.
     """
     # Use the first bit range for the temporal axis:
-    t_eye = domain.t[0:domain.samples_per_bit]
+    t_eye = domain.t[0 : domain.samples_per_bit]
 
     # Calculate power array and normalise if requested:
     P_t = temporal_power(field)
-    if(scale is not None):
+    if scale is not None:
         P_t /= scale
 
     # Reshape into matrix with total_bits rows and samples_per_bit columns:
@@ -50,8 +49,7 @@ def generate_eye_data(domain, field, scale=None):
     return t_eye, P_eye.T
 
 
-def calculate_regenerator_factor(alpha, D, gamma, length, peak_power,
-                                 using_alpha_dB=False):
+def calculate_regenerator_factor(alpha, D, gamma, length, peak_power, using_alpha_dB=False):
     """
     :param double alpha: Attenuation factor
     :param double D: Dispersion
@@ -61,7 +59,7 @@ def calculate_regenerator_factor(alpha, D, gamma, length, peak_power,
     :return: Maximum nonlinear phase and a factor indicating regeneration
     :rtype: double, double
     """
-    if(using_alpha_dB):
+    if using_alpha_dB:
         factor = 10.0 * np.log10(np.exp(1.0))
         alpha /= factor
 
@@ -78,8 +76,9 @@ class Metrics(object):
     Calculate useful metrics using a domain and a field.
     An example metric is Q.
     """
+
     def __init__(self, domain=None, field=None):
-        if((domain is None) or (field is None)):
+        if (domain is None) or (field is None):
             raise Exception("Metrics require a domain AND a field")
 
         self.domain = domain
@@ -106,18 +105,27 @@ class Metrics(object):
         Output metrics; including Q, extinction ratio, and jitter.
         """
         output_string = [
-            'max_Q = {0:f} dB', 'sample_time = {1:f} ps',
-            'threshold = {2:f} W', '<P_0,ones> = {3:f} W',
-            '<P_0,zeros> = {4:f} W', 'extinction_ratio = {5:f} dB',
-            'power_jitter = +/- {6:f} %']
+            "max_Q = {0:f} dB",
+            "sample_time = {1:f} ps",
+            "threshold = {2:f} W",
+            "<P_0,ones> = {3:f} W",
+            "<P_0,zeros> = {4:f} W",
+            "extinction_ratio = {5:f} dB",
+            "power_jitter = +/- {6:f} %",
+        ]
 
         return "\n".join(output_string).format(
-            self.max_Q_dB, self.sample_time, self.sample_threshold,
-            self.mean_peak_power_ones, self.mean_peak_power_zeros,
-            self.extinction_ratio, self.amplitude_jitter * 100.0)
+            self.max_Q_dB,
+            self.sample_time,
+            self.sample_threshold,
+            self.mean_peak_power_ones,
+            self.mean_peak_power_zeros,
+            self.extinction_ratio,
+            self.amplitude_jitter * 100.0,
+        )
 
     def calculate(self):
-        """ Actual calculation of metrics is performed in this function. """
+        """Actual calculation of metrics is performed in this function."""
         maximum_absolute_difference = -1.0
         sample_threshold = -1
         maximum_Q = -1.0
@@ -127,28 +135,26 @@ class Metrics(object):
         SPB = self.domain.samples_per_bit
 
         for spb in range(SPB):
-            data = [temporal_power(self.field[tb * SPB + spb])
-                    for tb in range(TB)]
+            data = [temporal_power(self.field[tb * SPB + spb]) for tb in range(TB)]
 
             threshold = np.sum(data) / TB
 
             zeros = []
             ones = []
             for datum in data:
-                if(datum < threshold):
+                if datum < threshold:
                     zeros.append(datum)
                 else:
                     ones.append(datum)
 
-            if((len(zeros) < 4) or (len(ones) < 4)):
+            if (len(zeros) < 4) or (len(ones) < 4):
                 print("Not enough ones and zeros to calculate Q")
-                #~raise Exception("Not enough ones and zeros to calculate Q")
+                # ~raise Exception("Not enough ones and zeros to calculate Q")
 
             absolute_difference = np.abs(np.mean(ones) - np.mean(zeros))
-            if(absolute_difference > maximum_absolute_difference):
+            if absolute_difference > maximum_absolute_difference:
                 maximum_absolute_difference = absolute_difference
-                maximum_Q = \
-                    absolute_difference / (np.std(ones) + np.std(zeros))
+                maximum_Q = absolute_difference / (np.std(ones) + np.std(zeros))
 
                 sample_time = spb * self.domain.dt
                 sample_threshold = threshold
@@ -157,7 +163,7 @@ class Metrics(object):
                 self.ones = ones
                 self.zeros = zeros
 
-        if(maximum_Q < 0.0):
+        if maximum_Q < 0.0:
             raise Exception("Unable to calculate maximum Q!")
 
         self.max_Q_dB = 10.0 * np.log10(maximum_Q)
@@ -175,5 +181,5 @@ class Metrics(object):
         self.extinction_ratio = -10.0 * np.log10(ER)
 
         # Alternative definition for extinction ratio:
-        #~self.extinction_ratio = -10.0 * np.log10( np.max( self.zeros ) /
-                                                  #~np.min( self.ones ) )
+        # ~self.extinction_ratio = -10.0 * np.log10( np.max( self.zeros ) /
+        # ~np.min( self.ones ) )
