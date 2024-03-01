@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2011, 2012  David Bolt,
     2019-2021 Vladislav Efremov, Denis Kharenko
@@ -28,6 +27,7 @@ from scipy.interpolate import interp1d
 
 try:
     import pyfftw
+
     scipy.fftpack = pyfftw.interfaces.scipy_fftpack
     pyfftw.interfaces.cache.enable()
     print("PyFFTW has been imported, use PYFFTW_NUM_THREADS and PYFFTW_PLANNER_EFFORT for tuning")
@@ -51,7 +51,7 @@ def temporal_power(A_t, normalise=False):
     """
     P = np.abs(A_t) ** 2
 
-    if(normalise):
+    if normalise:
         P /= max(P)
 
     return P
@@ -69,7 +69,7 @@ def spectral_power(A_t, normalise=False):
     """
     P = np.abs(fft(A_t)) ** 2
 
-    if(normalise):
+    if normalise:
         P /= max(P)
 
     return ifftshift(P)
@@ -84,7 +84,7 @@ def phase(A_t, unwrap=True):
 
     Generate an array of phase angles from complex amplitudes array.
     """
-    if(unwrap):
+    if unwrap:
         return np.unwrap(np.angle(A_t))
     else:
         return np.angle(A_t)
@@ -100,7 +100,7 @@ def chirp(A_t, window_nu, unwrap=True):
 
     Generate an array of chirp values from complex amplitudes array.
     """
-    if(unwrap):
+    if unwrap:
         return -np.gradient(phase(A_t, True)) * window_nu
     else:
         return -np.gradient(phase(A_t, False)) * window_nu
@@ -167,8 +167,8 @@ def energy(A_t, t):
 
     Energy calculation
     """
-    E = integrate.simps(temporal_power(A_t), t*1e-3)  # nJ
-    
+    E = integrate.simps(temporal_power(A_t), t * 1e-3)  # nJ
+
     return E
 
 
@@ -181,7 +181,7 @@ def inst_freq(A_t, dt):
     Generate an array of instantaneous frequency
     """
     ph = phase(A_t)
-    return np.append(np.diff(ph)/dt, 0.)
+    return np.append(np.diff(ph) / dt, 0.0)
 
 
 def loss_infrared_db(wl):
@@ -193,8 +193,8 @@ def loss_infrared_db(wl):
     x = [1500, 1600, 1650, 1700, 1750, 1800] wavelengths
     y = [0.01, 0.05, 0.1, 0.3, 1, 2.5] losses in dB
     """
-    p = np.array([-1.75292532e+03,  1.95607318e-02])
-    return np.exp(p[1]*(wl+p[0]))
+    p = np.array([-1.75292532e03, 1.95607318e-02])
+    return np.exp(p[1] * (wl + p[0]))
 
 
 def loss_rayleigh_db(wl):
@@ -204,9 +204,9 @@ def loss_rayleigh_db(wl):
 
     See, eg. Argawal "Fiber-Optic Communication Systems" ch2
     """
-    factor = (1-0.14/(wl*1e-3)**4)
+    factor = 1 - 0.14 / (wl * 1e-3) ** 4
     factor[factor <= 0] = 1e-16
-    factor = -10*np.log10(factor)
+    factor = -10 * np.log10(factor)
     return factor
 
 
@@ -214,13 +214,13 @@ def max_peak_params(P, prominence):
     """
     :param power array *Unit: W*
 
-    :return: 
-    param double power_max: maximum power *Unit: W*,  
-    param double pulse_fwhm: FWHM *Unit: input arr indexes*, 
+    :return:
+    param double power_max: maximum power *Unit: W*,
+    param double pulse_fwhm: FWHM *Unit: input arr indexes*,
     param double left_ind, right_ind: interpolated positions of left and right intersection points of a FWHM line *Unit: input arr indexes*,
     """
     peaks, properties = find_peaks(P, height=0)
-    max_peak_ind = np.argmax(properties['peak_heights'])
+    max_peak_ind = np.argmax(properties["peak_heights"])
     results_fwhm = peak_widths(P, [peaks[max_peak_ind]], rel_height=0.5)
 
     ind_max = np.argmax(results_fwhm[1])
@@ -238,31 +238,32 @@ def spectrum_width_params(P, prominence=0.0001):
     """
     :param power array *Unit: W*
 
-    :return: 
-    param double power_max: maximum power *Unit: W*,  
-    param double pulse_fwhm: FWHM *Unit: input arr indexes*, 
+    :return:
+    param double power_max: maximum power *Unit: W*,
+    param double pulse_fwhm: FWHM *Unit: input arr indexes*,
     param double left_ind, right_ind: interpolated positions of left and right intersection points of a FWHM line *Unit: input arr indexes*,
     """
+
     def find_x(y_peak, x_peak, is_left, ydata):
-        if (is_left):
+        if is_left:
             x = np.where(ydata < y_peak)[0]
             filtered_x = x[np.where(x < x_peak)]
-            boundary = np.amax(filtered_x) if len(filtered_x) > 0  else 0 
+            boundary = np.amax(filtered_x) if len(filtered_x) > 0 else 0
         else:
             x = np.where(ydata < y_peak)[0]
             filtered_x = x[np.where(x > x_peak)]
-            boundary = np.amin(filtered_x) if len(filtered_x) > 0  else 0 
+            boundary = np.amin(filtered_x) if len(filtered_x) > 0 else 0
         return int(boundary)
 
     peaks, _ = find_peaks(P, height=0, prominence=prominence)
 
-    if (len(peaks) > 1):
-        heigth_fwhm = np.amax(P)/10
+    if len(peaks) > 1:
+        heigth_fwhm = np.amax(P) / 10
         peaks.sort()
         left_ind = find_x(heigth_fwhm, peaks[0], True, P)
         right_ind = find_x(heigth_fwhm, peaks[-1], False, P)
         fwhm = right_ind - left_ind
-    elif (len(peaks) == 0):
+    elif len(peaks) == 0:
         heigth_fwhm = None
         left_ind = None
         right_ind = None
@@ -276,34 +277,25 @@ def spectrum_width_params(P, prominence=0.0001):
 
     return heigth_fwhm, fwhm, left_ind, right_ind
 
+
 def get_peaks(P):
-    peaks, _ = find_peaks(P, height=0, prominence=(np.amax(P)/10))
+    peaks, _ = find_peaks(P, height=0, prominence=(np.amax(P) / 10))
     return peaks
+
 
 def get_duration_spec(P, d_x, prominence=None):
     if prominence is None:
-        prominence = np.amax(P)/100 
-    heigth_fwhm, fwhm, left_ind, right_ind = spectrum_width_params(
-        P, prominence=prominence)
-    return abs(fwhm)*d_x
+        prominence = np.amax(P) / 100
+    heigth_fwhm, fwhm, left_ind, right_ind = spectrum_width_params(P, prominence=prominence)
+    return abs(fwhm) * d_x
+
 
 def get_duration(P, d_x, prominence=None):
     if prominence is None:
-        prominence = np.amax(P)/100
-    heigth_fwhm, fwhm, left_ind, right_ind = max_peak_params(
-        P, prominence=prominence)
-    return fwhm*d_x
+        prominence = np.amax(P) / 100
+    heigth_fwhm, fwhm, left_ind, right_ind = max_peak_params(P, prominence=prominence)
+    return fwhm * d_x
 
-def add_noise(A, t, target_snr_db):
-    E = integrate.simps(temporal_power(A), t*1e-3)  # nJ
-    Tr = 54.4 # ns
-    sig_avg = E/Tr
-    sig_avg_db = 10 * np.log10(sig_avg)
-    noise_avg_db = sig_avg_db - target_snr_db
-    noise_avg = 10 ** (noise_avg_db / 10)
-    mean_noise = 0
-    noise = np.random.normal(mean_noise, np.sqrt(noise_avg), np.shape(A))
-    return A + noise
 
 def get_downsampled(P, downsampling):
     f = interp1d(np.arange(len(P)), P)
