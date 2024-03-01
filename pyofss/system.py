@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2011, 2012  David Bolt, 2019-2020 Vlad Efremov, Denis Kharenko
 
@@ -21,8 +20,10 @@
 try:
     from pyfftw import byte_align
 except ImportError:
+
     def byte_align(v):
         return v
+
     pass
 
 
@@ -39,20 +40,21 @@ from .modules.storage import check_dir
 from .field import energy, spectrum_width_params
 from scipy.signal import find_peaks
 
-def field_save(field, filename='field_out'):
+
+def field_save(field, filename="field_out"):
     np.savez_compressed(filename, field=field)
 
 
-def field_load(filename='field_out'):
+def field_load(filename="field_out"):
     if filename.endswith(".npz"):
-        d = np.load(filename)['field']
+        d = np.load(filename)["field"]
     elif filename.endswith(".npy"):
         d = np.load(filename)
     else:
         try:
-            d = np.load(filename + '.npz')['field']
+            d = np.load(filename + ".npz")["field"]
         except:
-            d = np.load(filename + '.npy')
+            d = np.load(filename + ".npy")
     return d
 
 
@@ -73,25 +75,24 @@ class System(object):
         self.fields = None
         self.modules = None
         self.clear(remove_modules=True)
-        
+
+        self.field = field
+
         self.df_results = None
         self.df_fields = None
         df_temp, df_spec, df_complex = None, None, None
         self.df_type_dict = {"temp": df_temp, "spec": df_spec, "complex": df_complex}
         self.z_curr = 0
 
-        if field is not None:
-            self.field = field
-
         self.charact_dir = charact_dir
-        
+
         if self.charact_dir is not None:
             check_dir(self.charact_dir)
 
     @property
     def df_temp(self):
         if self.df_type_dict["temp"] is not None:
-            return self.df_type_dict["temp"] 
+            return self.df_type_dict["temp"]
         else:
             self.init_df("temp")
             return self.df_type_dict["temp"]
@@ -99,47 +100,50 @@ class System(object):
     @property
     def df_spec(self):
         if self.df_type_dict["spec"] is not None:
-            return self.df_type_dict["spec"] 
+            return self.df_type_dict["spec"]
         else:
             self.init_df("spec")
             return self.df_type_dict["spec"]
-        
+
     @property
     def df_complex(self):
         if self.df_type_dict["complex"] is not None:
-            return self.df_type_dict["complex"] 
+            return self.df_type_dict["complex"]
         else:
             self.init_df("complex")
             return self.df_type_dict["complex"]
-        
+
     def clear(self, remove_modules=False):
         """
         Clear contents of all fields.
         Clear (remove) all modules if requested.
         """
-        if(self.domain.channels > 1):
-            self.field = [np.zeros([self.domain.total_samples], complex)
-                          for channel in range(self.domain.channels)]
+        if self.domain.channels > 1:
+            self.field = [np.zeros([self.domain.total_samples], complex) for channel in range(self.domain.channels)]
         else:
             self.field = np.zeros([self.domain.total_samples], complex)
 
         self.fields = {}
 
-        if(remove_modules):
+        if remove_modules:
             self.modules = []
 
     def add(self, module):
-        """ Append a module to the system. """
+        """Append a module to the system."""
         self.modules.append(module)
+
+    def add_modules(self, module_list):
+        for module in module_list:
+            self.modules.append(module)
 
     def __getitem__(self, module_name):
         for index, module in enumerate(self.modules):
-            if(module.name == module_name):
+            if module.name == module_name:
                 return self.modules[index]
 
     def __setitem__(self, module_name, new_module):
         for index, module in enumerate(self.modules):
-            if(module.name == module_name):
+            if module.name == module_name:
                 self.modules[index] = new_module
                 return
 
@@ -161,7 +165,7 @@ class System(object):
                 # concatenate dataframes that were received from different fibres if not empty
                 if not df_new.empty:
                     z_curr = df_new.iloc[-1].name[-1]
-                    df = pd.concat([df, df_new])        
+                    df = pd.concat([df, df_new])
         if df_type in self.df_type_dict.keys():
             self.df_type_dict[df_type] = df
         else:
@@ -182,13 +186,13 @@ class System(object):
     def update_laser_info(self, obj):
         df_new_results = None
         if type(obj) is Fibre:
-                df_new_results = obj.stepper.storage.get_df_result(self.z_curr)
+            df_new_results = obj.stepper.storage.get_df_result(self.z_curr)
         if type(obj) is OpenclFibre:
-                df_new_results = obj.get_df_result(self.z_curr)
-        
+            df_new_results = obj.get_df_result(self.z_curr)
+
         if df_new_results is not None:
             self.z_curr = df_new_results.index.get_level_values("z [mm]").values[-1]
-            if self.df_results is None: 
+            if self.df_results is None:
                 self.df_results = df_new_results
             else:
                 self.df_results = pd.concat([self.df_results, df_new_results])
@@ -196,45 +200,43 @@ class System(object):
     def update_result_df(self, obj):
         self.update_laser_info(obj)
 
-    def save_result_df_to_scv(self, dir):            
+    def save_result_df_to_scv(self, dir):
         check_dir(dir)
         if self.df_results is not None:
             self.df_results.to_csv(os.path.join(dir, "laser_info.csv"))
-        
-    def update_fields_df(self, df_field_new):        
-        if self.df_fields is None: 
+
+    def update_fields_df(self, df_field_new):
+        if self.df_fields is None:
             self.df_fields = df_field_new
         else:
             self.df_fields = pd.concat([self.df_fields, df_field_new])
 
-    def save_fields_df_to_scv(self, dir):            
+    def save_fields_df_to_scv(self, dir):
         check_dir(dir)
         if self.df_fields is not None:
             self.df_fields.to_csv(os.path.join(dir, "fields.csv"))
-            
+
     def run(self):
         """
         Propagate field through each module, with the resulting field at the
         exit of each module stored in a dictionary, with module name as key.
-        """        
-        
+        """
+
         self.field = byte_align(self.field)
         for module in self.modules:
             print(module.name)
             self.field = module(self.domain, self.field)
             self.fields[module.name] = self.field
             self.update_result_df(module)
-            
-            if hasattr(module,'cycle'):
+
+            if hasattr(module, "cycle"):
                 if module.cycle and module.name is not None:
                     iterables = [[module.cycle], [module.name]]
-                    index = pd.MultiIndex.from_product(
-                        iterables,  names=["cycle", "fibre"])
-                    self.update_fields_df(pd.DataFrame([self.field], index=index) ) 
-                    if (self.charact_dir is not None):
+                    index = pd.MultiIndex.from_product(iterables, names=["cycle", "fibre"])
+                    self.update_fields_df(pd.DataFrame([self.field], index=index))
+                    if self.charact_dir is not None:
                         self.save_fields_df_to_scv(self.charact_dir)
-                
-            if (module.name == "splitter_2" and self.charact_dir):
+
+            if module.name == "splitter_2" and self.charact_dir:
                 print("new characts are saved")
                 self.save_result_df_to_scv(self.charact_dir)
-        
