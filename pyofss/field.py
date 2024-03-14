@@ -255,7 +255,7 @@ def spectrum_width_params(P, prominence=0.0001):
             boundary = np.amin(filtered_x) if len(filtered_x) > 0 else 0
         return int(boundary)
 
-    peaks, _ = find_peaks(P, height=0, prominence=prominence)
+    peaks, _ = find_peaks(P, prominence=prominence)
 
     if len(peaks) > 1:
         heigth_fwhm = np.amax(P) / 10
@@ -275,7 +275,7 @@ def spectrum_width_params(P, prominence=0.0001):
         left_ind = results_fwhm[2][0]
         right_ind = results_fwhm[3][0]
 
-    return heigth_fwhm, fwhm, left_ind, right_ind
+    return heigth_fwhm, fwhm, int(left_ind), int(right_ind)
 
 
 def get_peaks(P):

@@ -167,6 +167,7 @@ def visualise_fields_df(
             z = fibre_df.index.get_level_values("z [mm]").values
 
             if auto_lims:
+                h = fibre_df.values.transpose()
                 _, _, left_idx_start, right_idx_start = spectrum_width_params(h[:, 0], h[:, 0].max() / 10)
                 _, _, left_idx_end, right_idx_end = spectrum_width_params(h[:, -1], h[:, -1].max() / 10)
 
