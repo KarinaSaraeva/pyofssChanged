@@ -76,7 +76,8 @@ class System(object):
         self.modules = None
         self.clear(remove_modules=True)
 
-        self.field = field
+        if field is not None:
+            self.field = field
 
         self.df_results = None
         self.df_fields = None
