@@ -1,9 +1,7 @@
-
 """
-    Copyright (C) 2020 Vlad Efremov
+    Copyright (C) 2023 Vladislav Efremov, Denis Kharenko
 
     This file is part of pyofss 2.0.
-
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -21,19 +19,23 @@
 
 import numpy as np
 
-class Splitter( object ):
-
-    def __init__(self, name="splitter", channel = 0, loss = 0.0):
-        # TODO negative values should be represent as dB
+class Phase_shifter(object):
+    
+    def __init__(self, name = 'ph_shifter', channel = 0,
+                 phase=None):
         self.name = name
-        self.loss = loss
         self.channel = channel
+        self.phase = phase
 
+        self.field = None
+        
     def __call__(self, domain, field):
-        A = field.copy()
-        if domain.channels > 1:
-            A[self.channel] = np.sqrt(1.0 - self.loss)*field[self.channel]
+        self.field = field.copy()
+        factor = self.phase*1j
+        if domain.channels > 0:
+            self.field[self.channel] = np.exp(factor) * (self.field[self.channel])
         else:
-            A = np.sqrt(1.0 - self.loss)*field
-        return A
-
+            self.field = np.exp(factor) * self.field
+        return self.field
+        
+        

@@ -73,8 +73,9 @@ class System(object):
         Clear (remove) all modules if requested.
         """
         if(self.domain.channels > 1):
-            self.field = [np.zeros([self.domain.total_samples], complex)
-                          for channel in range(self.domain.channels)]
+            #self.field = [np.zeros([self.domain.total_samples], complex)
+            #              for channel in range(self.domain.channels)]
+            self.field = np.zeros( self.domain.total_samples*self.domain.channels, complex).reshape(self.domain.channels, self.domain.total_samples)
         else:
             self.field = np.zeros([self.domain.total_samples], complex)
 

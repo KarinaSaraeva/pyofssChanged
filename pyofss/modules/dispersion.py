@@ -25,17 +25,24 @@ from .linearity import Linearity
 
 class Dispersion(object):
 
-    def __init__(self, name = 'disp', beta=None, centre_omega=None):
+    def __init__(self, name = 'disp', channel = 0,
+                 beta=None, centre_omega=None):
         """
         :param array_like beta: Array of dispersion parameters
 
         Simply module provides dispersion shift
         """
         self.name = name
+        self.channel = channel
         self.linearity = Linearity(
                 beta=beta, centre_omega=centre_omega)
 
     def __call__(self, domain, field):
         factor = self.linearity(domain)
-        return ifft( np.exp(factor) * fft(field) )
+        A = field.copy()
+        if domain.channels > 0:
+            A[self.channel] = ifft( np.exp(factor) * fft(A[self.channel]) )
+        else:
+            A = ifft( np.exp(factor) * fft(A) )
+        return A
 
