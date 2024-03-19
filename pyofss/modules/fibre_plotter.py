@@ -174,14 +174,10 @@ def visualise_fields_df(
                 left_idx = min(left_idx_start, left_idx_end) - 100
                 right_idx = max(right_idx_start, right_idx_end) + 100
 
-                # left_lim_start, right_lim_start = y_arr[[int(left_idx), int(right_idx)]]
-                # ax[i, j].set_ylim(left_lim_start, right_lim_start)
-
                 X, Y = np.meshgrid(z, y_arr[left_idx:right_idx])
                 h = fibre_df.values[:, left_idx:right_idx].transpose()
 
             elif y_lims is not None:
-                # ax[i, j].set_ylim(*y_lims)
                 indices = np.where((y_arr > y_lims[0]) & (y_arr < y_lims[1]))
                 left_idx = np.min(indices)
                 right_idx = np.max(indices)
@@ -206,7 +202,7 @@ def visualise_fields_df(
         fig.suptitle(title)
 
     if figname is not None:
-        plt.savefig(figname)
+        plt.savefig(figname, bbox_inches="tight")
 
     return fig
 
@@ -238,6 +234,6 @@ def visualise_results_df(df_results, figname=None, title=None):
         fig.suptitle(title)
 
     if figname is not None:
-        plt.savefig(figname)
+        plt.savefig(figname, bbox_inches="tight")
 
     return fig

@@ -309,7 +309,6 @@ class OpenclProgramm(object):
         self.buf_temp = None
         self.buf_interaction = None
         self.buf_factor = None
-
         self.buf_mod = None
         self.buf_conv = None
         self.buf_h_R = None
@@ -320,6 +319,10 @@ class OpenclProgramm(object):
         self.power_buffer = None
         self.downsampled_power_buffer = None
         self.simpson_result = None
+
+    def __del__(self):
+        """Destructor to clean up resources."""
+        self.clear_arrays_on_device()
 
     def cl_initialise(self):
         """Initialise opencl related parameters."""
@@ -406,6 +409,29 @@ class OpenclProgramm(object):
 
     def reikna_fft_execute(self, d, inverse=False):
         self.plan(d, d, inverse=inverse)
+
+    def cl_clear(self, cl_arr):
+        """clear array on a device"""
+        if cl_arr is not None:
+            if cl_arr.size > 0:
+                cl_arr.data.release()
+                print("released")
+
+    def clear_arrays_on_device(self):
+        self.cl_clear(self.buf_field)
+        self.cl_clear(self.buf_temp)
+        self.cl_clear(self.buf_interaction)
+        self.cl_clear(self.power_buffer)
+        self.cl_clear(self.downsampled_power_buffer)
+        self.cl_clear(self.buf_h_R)
+        self.cl_clear(self.buf_nn_factor)
+        self.cl_clear(self.buf_mod)
+        self.cl_clear(self.buf_conv)
+        self.cl_clear(self.buf_factor)
+        self.cl_clear(self.simpson_result)
+
+        gc.collect()
+        self.__dict__.update((key, None) for key in self.__dict__)
 
 
 def get_device_memory_info():
@@ -667,7 +693,7 @@ class OpenclFibre(object):
                 self.compute_characts(self.buf_field)
             
         # gpu memory should be cleared here manualy all needed info is already loaded
-        # self.clear_arrays_on_device()
+        self.clear_arrays_on_device()
         return self.buf_field.get()
     
     def calculate_reference_length(self, field):
@@ -783,10 +809,6 @@ class OpenclFibre(object):
         cl.enqueue_copy(self.queue, dst_buffer.data, src_buffer.data).wait()
 
     def compute_characts(self, field):
-        def get_peaks(P, prominence):
-            peaks, _ = find_peaks(P, height=0, prominence=prominence)
-            return peaks
-
         self.prg.cl_power(self.queue, self.shape, None, field.data, self.power_buffer.data)
 
         # Get the maximum value in the array
@@ -800,7 +822,6 @@ class OpenclFibre(object):
         field_cpu = field.get()
         self.l_d_list.append(self.get_dispersion_length(field_cpu))
         self.l_nl_list.append(self.get_nonlinear_length(field_cpu))
-        #self.peaks_list.append(get_peaks(power_buffer_cpu, max_power/10)) # cant be paralleled
 
     def get_energy(self, field):
         self.prg.cl_power(self.queue, self.shape, None, field.data, self.power_buffer.data)
