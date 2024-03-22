@@ -415,7 +415,6 @@ class OpenclProgramm(object):
         if cl_arr is not None:
             if cl_arr.size > 0:
                 cl_arr.data.release()
-                print("released")
 
     def clear_arrays_on_device(self):
         self.cl_clear(self.buf_field)
@@ -633,6 +632,10 @@ class OpenclFibre(object):
     def buf_h_R(self):
         return self.cl_programm.buf_h_R
     
+    @property
+    def buf_nn_factor(self):
+        return self.cl_programm.buf_nn_factor
+    
     @buf_factor.setter
     def buf_factor(self, value):
         self.cl_programm.buf_factor = value
@@ -799,7 +802,7 @@ class OpenclFibre(object):
     def clear_arrays_on_device(self): 
         get_device_memory_info()
         if self.amplifier:
-            self.amplifier.clear_arrays_on_device()    
+            # self.amplifier.clear_arrays_on_device()    
             gc.collect()
             get_device_memory_info()
     
@@ -820,8 +823,8 @@ class OpenclFibre(object):
         self.max_power_list.append(max_power.get())
 
         field_cpu = field.get()
-        self.l_d_list.append(self.get_dispersion_length(field_cpu))
-        self.l_nl_list.append(self.get_nonlinear_length(field_cpu))
+        self.l_d_list.append(self.get_dispersion_length(field_cpu)) #
+        self.l_nl_list.append(self.get_nonlinear_length(field_cpu)) #
 
     def get_energy(self, field):
         self.prg.cl_power(self.queue, self.shape, None, field.data, self.power_buffer.data)

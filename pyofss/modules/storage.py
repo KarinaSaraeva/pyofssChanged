@@ -253,7 +253,7 @@ class Storage(object):
         elif type == "spec":
             x, y, z = self.get_plot_data(is_temporal=False)
         elif type == "complex":
-            y = self.As
+            y = self.As  # [get_downsampled(P, self.downsampling) for P in self.As]
             z = self.z
         else:
             raise InvalidArgumentError(f"{type} is not a valid argument, type param can be 'temp', 'spec' or 'complex'")
