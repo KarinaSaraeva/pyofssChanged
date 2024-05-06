@@ -27,7 +27,10 @@ from pyofss import field
 from pyofss.field import temporal_power
 from pyofss.field import spectral_power
 
-import pyopencl.array as pycl_array
+try:
+    import pyopencl.array as pycl_array
+except ImportError:
+    print("OpenCL is not activated, Storage will work with NumPy arrays only")
 
 
 def reduce_to_range(x, ys, first_value, last_value):
@@ -120,10 +123,12 @@ class Storage(object):
         self.fft_total = field.fft_counter
 
     def get_A(self, A):
-        if isinstance(A, pycl_array.Array):
+        if isinstance(A, np.ndarray):
+            return A
+        elif isinstance(A, pycl_array.Array):
             return A.get()
         else:
-            return A
+            raise TypeError("unsupported type {} is stored".format(type(A)))
 
     def append(self, z, A):
         """

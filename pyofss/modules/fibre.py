@@ -143,9 +143,9 @@ if __name__ == "__main__":
 
     P_ts = []
     methods = ['ss_simple',
-            'ss_symmetric', 'ss_symmetric+ss', 'ss_symmetric+raman',  'ss_symmetric+all',
-            'ss_sym_rk4',
-            'rk4ip', 'rk4ip+ss', 'rk4ip+raman', 'rk4ip+all']
+               'ss_symmetric', 'ss_symmetric+ss', 'ss_symmetric+raman', 'ss_symmetric+all',
+               'ss_sym_rk4',
+               'rk4ip', 'rk4ip+ss', 'rk4ip+raman', 'rk4ip+all']
 
     for m in methods:
         sys = System(domain)
