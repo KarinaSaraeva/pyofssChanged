@@ -30,7 +30,6 @@ from pyofss.field import spectral_power
 import pyopencl.array as pycl_array
 
 
-
 def reduce_to_range(x, ys, first_value, last_value):
     """
     :param array_like x: Array of x values to search
@@ -81,7 +80,6 @@ class Storage(object):
     functions to modify the stored data.
     """
     def __init__(self, length, traces):
-        
         self.length = length
         self.traces = traces
         self.trace_zs = []
@@ -120,10 +118,10 @@ class Storage(object):
     def store_current_fft_count(self):
         """ Store current value of the global variable in the field module. """
         self.fft_total = field.fft_counter
-        
+
     def get_A(self, A):
         if isinstance(A, pycl_array.Array):
-                return A.get()
+            return A.get()
         else:
             return A
 
@@ -137,40 +135,40 @@ class Storage(object):
         if self.traces < 1:
             self.z.append(z)
             self.As.append(self.get_A(A))
-        #Проверяем, совпадает ли текущая длина с точкой сохранения
-        #если совпадает, сохраняем поле, переходим к следующей точке сохранения
-        #и добавляем в буффер
+        # Проверяем, совпадает ли текущая длина с точкой сохранения
+        # если совпадает, сохраняем поле, переходим к следующей точке сохранения
+        # и добавляем в буффер
         elif math.isclose(self.trace_zs[self.trace_n], z):
             self.trace_n += 1
-            
+
             self.z.append(z)
             self.As.append(self.get_A(A))
-            
+
             self.buff_z = [z]
             self.buff_As = [self.get_A(A)]
-        #если не совпадает, проверяем, не прошли ли точку сохранения
-        #если прошли, далаем интерполяцию на основе буффера
-        #сохраняем последние значения из него и переходим к след. точке сохранения
+        # если не совпадает, проверяем, не прошли ли точку сохранения
+        # если прошли, далаем интерполяцию на основе буффера
+        # сохраняем последние значения из него и переходим к след. точке сохранения
         elif self.trace_zs[self.trace_n] < z:
             self.buff_z.append(z)
             self.buff_As.append(self.get_A(A))
 
-            #проверяем, есть ли ещё точки сохранения, которые мы перешагнули
-            zs = [zs for zs in self.trace_zs[self.trace_n: ] if zs < z]
-            self.trace_n = np.where(np.isclose(self.trace_zs,zs[-1]))[0][0]
-            
+            # проверяем, есть ли ещё точки сохранения, которые мы перешагнули
+            zs = [zs for zs in self.trace_zs[self.trace_n:] if zs < z]
+            self.trace_n = np.where(np.isclose(self.trace_zs, zs[-1]))[0][0]
+
             self.interpolate_As_for_z_values(zs)
-            
+
             self.buff_z = [self.buff_z[-1]]
             self.buff_As = [self.buff_As[-1]]
-            
+
             self.trace_n += 1
-        #если не прошли точку сохранения, отправляем текущие значения в буффер
-        #и идём дальше
+        # если не прошли точку сохранения, отправляем текущие значения в буффер
+        # и идём дальше
         elif self.traces != 1:
             self.buff_z.append(z)
             self.buff_As.append(self.get_A(A))
-     
+
     def get_plot_data(self, is_temporal=True, reduced_range=None,
                       normalised=False, channel=None):
         """
@@ -277,7 +275,7 @@ if __name__ == "__main__":
 
     import time
     import matplotlib.pyplot as plt
-    
+
     domain = Domain(bit_width=200.0, total_bits=8, samples_per_bit=512 * 32)
     gaussian = Gaussian(peak_power=1.0, width=1.0)
 
@@ -287,14 +285,13 @@ if __name__ == "__main__":
                          length=20,
                          method='rk4ip',
                          total_steps=200,
-                         traces = key,
+                         traces=key,
                          beta=[0.0, 0.0, 0.0, 1.0],
                          gamma=1.5,
                          use_all='hollenbeck'
-                         )
-                         for key in traces}
+                         ) for key in traces}
 
-    dur =[]
+    dur = []
     max_rel_err = []
     A_t = {}
 
@@ -306,7 +303,7 @@ if __name__ == "__main__":
         start = time.time()
         sys.run()
         stop = time.time()
-        
+
         dur.append(stop - start)
         stor = fibers[f'{numb}'].stepper.storage
         A1 = stor.As[-int(numb/2)]
@@ -314,15 +311,14 @@ if __name__ == "__main__":
         z1 = stor.z[-int(numb/2)]
         print(z1)
 
-        fiber0 = Fibre(length=z1, method='rk4ip', total_steps=300, traces = 1,
-                        beta=[0.0, 0.0, 0.0, 1.0], gamma=1.5, use_all='hollenbeck')
+        fiber0 = Fibre(length=z1, method='rk4ip', total_steps=300, traces=1,
+                       beta=[0.0, 0.0, 0.0, 1.0], gamma=1.5, use_all='hollenbeck')
         sys0 = System(domain)
         sys0.add(gaussian)
         sys0.add(fiber0)
         sys0.run()
         A_t0 = temporal_power(sys0.field)
 
-        
         DELTA_POWER = A_t0 - A_t[f'{numb}']
 
         MEAN_RELATIVE_ERROR = np.mean(np.abs(DELTA_POWER))
@@ -334,7 +330,6 @@ if __name__ == "__main__":
         print(f"Run time with {numb} traces: {dur[-1]}")
         print(f"Mean relative error: {MEAN_RELATIVE_ERROR}")
         print(f"Max relative error: {MAX_RELATIVE_ERROR}")
-
 
     fig = plt.figure()
     ax1 = fig.add_subplot(211)
