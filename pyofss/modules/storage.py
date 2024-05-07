@@ -61,16 +61,20 @@ def reduce_to_range(x, ys, first_value, last_value):
         # The returned slice does NOT include the second index parameter. To
         # include the element corresponding to last_index, the second index
         # parameter should be last_index + 1:
-        sliced_x = x[first_index:last_index + 1]
+        sliced_x = x[first_index: last_index + 1]
 
         # ys is a list of arrays. Does each array contain additional arrays:
         import collections
         if isinstance(ys[0][0], collections.Iterable):
-            sliced_ys = [[y_c0[first_index:last_index + 1],
-                          y_c1[first_index:last_index + 1]]
-                         for (y_c0, y_c1) in ys]
+            sliced_ys = [
+                [
+                    y_c0[first_index: last_index + 1],
+                    y_c1[first_index: last_index + 1],
+                ]
+                for (y_c0, y_c1) in ys
+            ]
         else:
-            sliced_ys = [y[first_index:last_index + 1] for y in ys]
+            sliced_ys = [y[first_index: last_index + 1] for y in ys]
 
         return sliced_x, sliced_ys
     else:

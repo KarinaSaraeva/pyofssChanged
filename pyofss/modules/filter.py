@@ -60,7 +60,7 @@ class Filter(object):
     """
     def __init__(self, name="filter", width_nu=0.1, offset_nu=0.0,
                  m=1, channel=0, using_fwhm=False,
-                 frac = 1.0, type_filt = "reflected"):
+                 frac=1.0, type_filt="reflected"):
 
         if not (1e-6 < width_nu < 1e3):
             raise OutOfRangeError(

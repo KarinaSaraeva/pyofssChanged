@@ -25,15 +25,16 @@ import matplotlib.animation as animation
 
 import subprocess
 
-labels = {"t": "Time, $t \, (ps)$",
+labels = {"t": r"Time, $\t \, (ps)$",
           "nu": r"Frequency, $\nu \, (THz)$",
           "Lambda": r"Wavelength, $\lambda \, (nm)$",
-          "P_t": "Power, $|A(z, t)|^2 \, (W)$",
+          "P_t": r"Power, $|A(z, t)|^2 \, (W)$",
           "P_nu": r"Power, $|\tilde{A}(z, \nu)|^2 \, (a.u.)$",
           "P_lambda": r"Power, $|\tilde{A}(z, \lambda|^2 \, (a.u.)$",
-          "z": "Fibre length, $z \, (km)$",
-          "phi": "Phase, $\phi(t) \, (rad)$",
-          "chirp": "Frequency chirp, $\delta \omega \, (rad / ps)$",
+          "z": r"Fibre length, $z \, (km)$",
+          "z_mm": r"Fibre length, $z \, (mm)$",
+          "phi": r"Phase, $\phi(t) \, (rad)$",
+          "chirp": r"Frequency chirp, $\delta \omega \, (rad / ps)$",
           "t_normal": r"Normalised time, $\frac{t}{T_0}$",
           "xi": r"Normalised distance, $\xi = \frac{z}{L_D}$",
           "xi_prime": r"Normalised distance, $\xi' = \frac{z}{L_D'}$",
@@ -155,7 +156,7 @@ def waterfall_plot(x, y, z, x_label="", y_label="", z_label="",
 def single_plot(x, y, x_label="", y_label="", label="",
                 x_range=None, y_range=None, use_fill=True,
                 alpha=0.2, filename="", style="b-", fill_colour="b",
-                inst_freq = None, y2_label="", y2_range=None):
+                inst_freq=None, y2_label="", y2_range=None):
     """
     :param Dvector x: First axis
     :param Dvector y: Second axis
@@ -177,7 +178,12 @@ def single_plot(x, y, x_label="", y_label="", label="",
     """
     print("\nGenerating single_plot...")
     plt.clf()
+
     fig = plt.figure()
+    # Disable the resizing feature
+    fig.canvas.resizable = True
+    # Change the toolbar position
+    fig.canvas.toolbar_position = 'top'
     ax1 = fig.add_subplot(111)
     ax1.plot(x, y, style, label=label)
 
@@ -212,7 +218,7 @@ def single_plot(x, y, x_label="", y_label="", label="",
 def double_plot(x, y, X, Y, x_label="", y_label="", X_label="",
                 Y_label="", x_range=None, y_range=None, X_range=None,
                 Y_range=None, use_fill=True, alpha=0.2, filename="",
-                inst_freq = None, y2_label="", y2_range=None):
+                inst_freq=None, y2_label="", y2_range=None):
     """
     :param Dvector x: First axis of upper plot
     :param Dvector y: Second axis of upper plot
@@ -237,7 +243,6 @@ def double_plot(x, y, X, Y, x_label="", y_label="", X_label="",
     one above the other.
     """
     print("\nGenerating double_plot...")
-
     plt.clf()
 
     ax1 = plt.subplot(211)
@@ -425,7 +430,7 @@ def animated_plot(x, y, z, x_label="", y_label="", z_label="",
     Generate an animated plot, either interactive or saved as a video.
     """
     print("\nGenerating animated_plot...")
-    #~plt.clf()
+    plt.clf()
 
     fig = plt.figure()
 

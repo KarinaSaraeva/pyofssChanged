@@ -152,17 +152,17 @@ if __name__ == "__main__":
         sys.add(gaussian)
         if m.count('+') == 0:
             sys.add(Fibre(length=5.0, method=m, total_steps=50,
-                      beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0))
+                          beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0))
         else:
             if m.split('+')[1] == 'ss':
                 sys.add(Fibre(length=5.0, method=m.split('+')[0], total_steps=50,
-                      beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0, self_steepening=True))
+                              beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0, self_steepening=True))
             elif m.split('+')[1] == 'raman':
                 sys.add(Fibre(length=5.0, method=m.split('+')[0], total_steps=50,
-                      beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0, use_all='hollenbeck'))
+                              beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0, use_all='hollenbeck'))
             else:
                 sys.add(Fibre(length=5.0, method=m.split('+')[0], total_steps=50,
-                      beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0, self_steepening=True, use_all='hollenbeck'))
+                              beta=[0.0, 0.0, 0.0, 1.0], gamma=1.0, self_steepening=True, use_all='hollenbeck'))
 
         start = time.time()
         sys.run()

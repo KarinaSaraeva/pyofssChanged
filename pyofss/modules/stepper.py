@@ -102,7 +102,7 @@ class Stepper(object):
         # Store constants for adaptive method:
         self.total_attempts = 100
         self.steps_max = 50000
-        self.step_size_min = 1e-37 # some small value
+        self.step_size_min = 1e-37  # some small value
 
         self.safety = 0.9
         self.max_factor = 10.0
@@ -179,7 +179,7 @@ class Stepper(object):
         #### исследуется его модифицированая версия:
         #### DOI:10.1109/JLT.2009.2021538
 
-        #~print( "Starting ODE integration with adaptive step-size... " ),
+        #~print("Starting ODE integration with adaptive step-size... ")
 
         # Initialise:
         self.A_out = A
@@ -272,6 +272,7 @@ class Stepper(object):
                 return self.A_out
 
         raise MaximumStepsAllocatedError("Failed to complete with maximum steps allocated")
+
 
 if __name__ == "__main__":
     """
