@@ -21,9 +21,10 @@
 
 import numpy as np
 
-class Splitter( object ):
 
-    def __init__(self, name="splitter", channel = 0, loss = 0.0):
+class Splitter(object):
+
+    def __init__(self, name="splitter", channel=0, loss=0.0):
         # TODO negative values should be represent as dB
         self.name = name
         self.loss = loss
@@ -36,4 +37,3 @@ class Splitter( object ):
         else:
             A = np.sqrt(1.0 - self.loss)*field
         return A
-

@@ -40,7 +40,7 @@ class Dispersion(object):
     def __call__(self, domain, field):
         factor = self.linearity(domain)
         A = field.copy()
-        if domain.channels > 0:
+        if domain.channels > 1:
             A[self.channel] = ifft( np.exp(factor) * fft(A[self.channel]) )
         else:
             A = ifft( np.exp(factor) * fft(A) )

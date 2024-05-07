@@ -19,16 +19,16 @@
 
 import numpy as np
 
+
 class Phase_shifter(object):
-    
-    def __init__(self, name = 'ph_shifter', channel = 0,
+    def __init__(self, name='ph_shifter', channel=0,
                  phase=None):
         self.name = name
         self.channel = channel
         self.phase = phase
 
         self.field = None
-        
+
     def __call__(self, domain, field):
         self.field = field.copy()
         factor = self.phase*1j
@@ -37,5 +37,4 @@ class Phase_shifter(object):
         else:
             self.field = np.exp(factor) * self.field
         return self.field
-        
-        
+
