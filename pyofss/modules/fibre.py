@@ -205,7 +205,7 @@ if __name__ == "__main__":
 
     P_ts = []
     methods = ['ss_simple',
-               'ss_symmetric', 'ss_symmetric+ss', 'ss_symmetric+raman',  'ss_symmetric+all',
+               'ss_symmetric', 'ss_symmetric+ss', 'ss_symmetric+raman', 'ss_symmetric+all',
                'ss_sym_rk4',
                'rk4ip', 'rk4ip+ss', 'rk4ip+raman', 'rk4ip+all']
 
@@ -231,7 +231,7 @@ if __name__ == "__main__":
         stop = time.time()
         P_ts.append(temporal_power(sys.field))
 
-        #print("Run time for {} method is {}".format(m, stop-start))
+        print("Run time for {} method is {}".format(m, stop-start))
 
     multi_plot(sys.domain.t, P_ts, methods, labels["t"], labels["P_t"],
                methods, x_range=(-20.0, 40.0), use_fill=False)

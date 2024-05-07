@@ -177,6 +177,8 @@ def single_plot(x, y, x_label="", y_label="", label="",
     Generate a single plot.
     """
     print("\nGenerating single_plot...")
+    plt.clf()
+
     fig = plt.figure()
     # Disable the resizing feature
     fig.canvas.resizable = True
@@ -203,12 +205,14 @@ def single_plot(x, y, x_label="", y_label="", label="",
     if y_range is not None:
         ax1.set_ylim(y_range)
 
-    if label is not "":
+    if label != "":
         ax1.legend()
 
     if filename:
         plt.savefig(filename)
         print("Wrote file", filename)
+    else:
+        plt.show()
 
 
 def double_plot(x, y, X, Y, x_label="", y_label="", X_label="",
@@ -239,7 +243,6 @@ def double_plot(x, y, X, Y, x_label="", y_label="", X_label="",
     one above the other.
     """
     print("\nGenerating double_plot...")
-
     plt.clf()
 
     ax1 = plt.subplot(211)
@@ -427,7 +430,7 @@ def animated_plot(x, y, z, x_label="", y_label="", z_label="",
     Generate an animated plot, either interactive or saved as a video.
     """
     print("\nGenerating animated_plot...")
-    # ~plt.clf()
+    plt.clf()
 
     fig = plt.figure()
 
@@ -478,10 +481,10 @@ def convert_video(filename, output="ogv"):
     if output == "ogv":
         # Use Theora/Vorbis codecs
         command = ('ffmpeg2theora', '{0}'.format(filename))
-        # ~command = ('ffmpeg', '-i', '{0}'.format( filename ), '-b', '1500k',
-        #~'-vcodec', 'libtheora', '-acodec', 'libvorbis', '-ab',
-        #~'160000', '-g', '30',
-        # ~'{0}'.format( '.'.join((out_file, output)) ))
+        #~command = ('ffmpeg', '-i', '{0}'.format( filename ), '-b', '1500k',
+                   #~'-vcodec', 'libtheora', '-acodec', 'libvorbis', '-ab',
+                   #~'160000', '-g', '30',
+                   #~'{0}'.format( '.'.join((out_file, output)) ))
     elif output == "webm":
         # Use VP8/Vobis codecs
         command = ('ffmpeg', '-i', '{0}'.format(filename), '-b', '1500k',

@@ -29,6 +29,8 @@ import os.path
 import warnings
     
 class AmplifierBase(ABC):
+    """ Base class for a distribured amplifier
+    """
     @abstractmethod
     def factor(self, A, h):
         pass
@@ -38,7 +40,61 @@ class AmplifierBase(ABC):
         pass
 
 
-class Amplifier(AmplifierBase):
+class AmplifierSimple(object):  # TODO use AmplifierBase or not?
+    """
+    :param string name: Name of this module
+    :param double gain: Amount of (logarithmic) gain. *Unit: dB*
+    :param double E_saturation: Energy of saturation gain. *Unit: nJ*
+    :param double P_saturation: Power of saturation gain. *Unit: W*
+    :param double rep_rate: Repetition rate of pulse. *Unit: MHz*
+
+    Simple point amplifier provides satirated flat gain without noise
+    """
+    def __init__(self, name="amplifier", gain=None,
+                 E_sat=None, P_sat=None, rep_rate=None):
+
+        if gain is None:
+            raise Exception("The gain is not defined.")
+
+        if (P_sat is not None) and (E_sat is not None):
+            raise Exception("There should be only one parameter of saturation.")
+
+        self.name = name
+        self.gain = gain
+
+        if E_sat is not None:
+            self.E_sat = E_sat
+        elif P_sat is not None:
+            if rep_rate is None:
+                raise Exception("Repetition rate is not defined.")
+            self.E_sat = 1e3*P_sat/rep_rate   #nJ
+        else:
+            self.E_sat = None
+        self.field = None
+
+    def __call__(self, domain, field):
+        # Convert field to spectral domain:
+        self.field = fft(field)
+
+        # Calculate linear gain from logarithmic gain (G_dB -> G_linear)
+        G = power(10, 0.1 * self.gain)
+        if self.E_sat is not None:
+            E = energy(field, domain.t)
+            G = G/(1.0 + E/self.E_sat)
+        sqrt_G = sqrt(G)
+
+        if domain.channels > 1:
+            self.field[0] *= sqrt_G
+            self.field[1] *= sqrt_G
+        else:
+            self.field *= sqrt_G
+
+        # convert field back to temporal domain:
+        return ifft(self.field)
+
+
+
+class AmplifierDistributed(AmplifierBase):
     """ 
     :param string name: name of this module
     :param double gain: amount of (logarithmic) gain. *Unit: dB*
@@ -53,7 +109,7 @@ class Amplifier(AmplifierBase):
     """
 
     def __init__(self, name="simple_saturation", gain=None,
-                 E_sat=None, P_sat=None, Tr=None, length=1.0, lamb0=None, bandwidth=None, use_Er_profile=False, prg=None, queue=None, ctx=None, dorf="double"):
+                 E_sat=None, P_sat=None, rep_rate=None, length=1.0, lamb0=None, bandwidth=None, use_Er_profile=False, prg=None, queue=None, ctx=None, dorf="double"):
         self.length = length
         #print(f"amplifier length equals {self.length}")
 
@@ -79,9 +135,9 @@ class Amplifier(AmplifierBase):
         if E_sat is not None:
             self.E_sat = E_sat
         elif P_sat is not None:
-            if Tr is None:
+            if rep_rate is None:
                 raise Exception("Repetition rate is not defined.")
-            self.E_sat = P_sat*Tr  # nJ
+            self.E_sat = 1e3*P_sat/rep_rate  # nJ
         else:
             self.E_sat = None
         self.field = None
@@ -178,6 +234,7 @@ class Amplifier2LevelModel(AmplifierBase):
         :param double Pp: pump power *Unit: W*
         :param double N: the total number of Yb-ions integrated over the fibre mode
         :param double Rr: round trip frequency *Unit: THz*
+                note: THz is never used in experiments
 
         For OpenCl usage:
 
@@ -199,7 +256,7 @@ class Amplifier2LevelModel(AmplifierBase):
         self.lamb_p = 976.0
         self.N = N * (1e25) * np.pi * self.a **2 # density per unit length
         self._Pp = Pp
-        self.Tr = 1/Rr
+        self.Tr = 1/Rr  # TODO check the units!
 
         self.domain = None
 

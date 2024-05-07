@@ -62,12 +62,26 @@ OPENCL_OPERATIONS = Template("""
 
     #include <pyopencl-complex.h>
 
-
     __kernel void cl_cache(__global c${dorf}_t* factor,
                            const ${dorf} stepsize) {
         int gid = get_global_id(0);
 
         factor[gid] = c${dorf}_exp(c${dorf}_mulr(factor[gid], stepsize));
+    }
+
+    __kernel void cl_factor(__global c${dorf}_t* buf_factor,
+                           __global c${dorf}_t* factor,
+                           const ${dorf} stepsize) {
+        int gid = get_global_id(0);
+
+        buf_factor[gid] = c${dorf}_exp(c${dorf}_mulr(factor[gid], stepsize));
+    }
+
+    __kernel void cl_linear_cached(__global c${dorf}_t* field,
+                                   __global c${dorf}_t* factor) {
+        int gid = get_global_id(0);
+
+        field[gid] = c${dorf}_mul(field[gid], factor[gid]);
     }
 
     __kernel void cl_linear_cached(__global c${dorf}_t* field,
@@ -105,6 +119,12 @@ OPENCL_OPERATIONS = Template("""
     __kernel void cl_square_abs2(__global c${dorf}_t* field) {
         int gid = get_global_id(0);
         field[gid] = c${dorf}_new(c${dorf}_abs_squared(field[gid]), (${dorf})0.0f);
+    }
+
+    __kernel void cl_norm(__global c${dorf}_t* field,
+                          __global c${dorf}_t* err) {
+        int i = get_global_id(0);
+        err[i] = c${dorf}_mul(field[i], c${dorf}_conj(field[i]));
     }
 
     __kernel void cl_nonlinear(__global c${dorf}_t* field,
@@ -191,6 +211,36 @@ OPENCL_OPERATIONS = Template("""
 
         field[gid] = c${dorf}_mul(
             im_gamma, field[gid]);
+    }
+
+    __kernel void cl_split(__global c${dorf}_t* field,
+                        __global c${dorf}_t* subfield1, __global c${dorf}_t* subfield2,
+                        const int n)
+    {
+        int gid = get_global_id(0);
+        if (gid < n)
+        {
+            subfield1[gid] = field[gid];
+        }
+        else
+        {
+            subfield2[gid-n] = field[gid];
+        }
+    }
+
+    __kernel void cl_couple(__global c${dorf}_t* field,
+                        __global c${dorf}_t* subfield1, __global c${dorf}_t* subfield2,
+                        const int n)
+    {
+        int gid = get_global_id(0);
+        if (gid < n)
+        {
+            field[gid] = subfield1[gid];
+        }
+        else
+        {
+            field[gid] = subfield2[gid-n];
+        }
     }
 
     __kernel void cl_power(__global c${dorf}_t* field,
@@ -447,8 +497,8 @@ class OpenclFibre(object):
         self.nn_factor = None
         self.h_R = None
         self.omega = None
-        self.ss_factor = None            
-        
+        self.ss_factor = None
+
         # Force usage of cached version of function:
         self.cl_linear = self.cl_linear_cached
 
@@ -843,7 +893,7 @@ class OpenclFibre(object):
     def cl_nonlinear(self, fieldA_buffer, stepsize, fieldB_buffer):
         """ Nonlinear part of step, exponential term"""
         self.prg.cl_nonlinear_exp(self.queue, self.shape, None, fieldA_buffer.data, fieldB_buffer.data,
-                              self.np_float(self.gamma), self.np_float(stepsize))
+                                  self.np_float(self.gamma), self.np_float(stepsize))
 
     def cl_n_with_all_and_ss(self, field_buffer, stepsize):
         """ Nonlinear part of step with self_steepening and raman """
@@ -854,16 +904,16 @@ class OpenclFibre(object):
 
         # conv = ifft(h_R*(fft(|A|^2)))
         self.cl_copy(self.buf_conv, self.buf_mod)
-        self.plan.execute(self.buf_conv.data, inverse = True)
+        self.plan.execute(self.buf_conv.data, inverse=True)
         self.prg.cl_mul(self.queue, self.shape, None,
                         self.buf_conv.data, self.buf_h_R.data)
         self.plan.execute(self.buf_conv.data)
 
         # p = fft( A*( (1-f_R)*|A|^2 + f_R*conv ) )
         self.prg.cl_nonlinear_with_all_st1(self.queue, self.shape, None,
-                                         field_buffer.data, self.buf_mod.data, self.buf_conv.data,
-                                         self.np_float(self.f_R), self.np_float(self.f_R_inv))
-        self.plan.execute(field_buffer.data, inverse = True)
+                                           field_buffer.data, self.buf_mod.data, self.buf_conv.data,
+                                           self.np_float(self.f_R), self.np_float(self.f_R_inv))
+        self.plan.execute(field_buffer.data, inverse=True)
 
         # A_out = ifft( factor*(1 + omega*ss_factor)*p)
         self.prg.cl_nonlinear_with_all_st2_with_ss(self.queue, self.shape, None, field_buffer.data,
@@ -882,15 +932,15 @@ class OpenclFibre(object):
 
         # conv = ifft(h_R*(fft(|A|^2)))
         self.cl_copy(self.buf_conv, self.buf_mod)
-        self.plan.execute(self.buf_conv.data, inverse = True)
+        self.plan.execute(self.buf_conv.data, inverse=True)
         self.prg.cl_mul(self.queue, self.shape, None,
                         self.buf_conv.data, self.buf_h_R.data)
         self.plan.execute(self.buf_conv.data)
 
         # p = A*( (1-f_R)*|A|^2 + f_R*conv )
         self.prg.cl_nonlinear_with_all_st1(self.queue, self.shape, None,
-                                         field_buffer.data, self.buf_mod.data, self.buf_conv.data,
-                                         self.np_float(self.f_R), self.np_float(self.f_R_inv))
+                                           field_buffer.data, self.buf_mod.data, self.buf_conv.data,
+                                           self.np_float(self.f_R), self.np_float(self.f_R_inv))
 
         # A_out = factor*p
         self.prg.cl_nonlinear_with_all_st2_without_ss(self.queue, self.shape, None, field_buffer.data,
@@ -898,7 +948,6 @@ class OpenclFibre(object):
 
         self.prg.cl_step_mul(self.queue, self.shape, None,
                              field_buffer.data, self.np_float(stepsize))
-
 
 
     def cl_sum(self, first_buffer, first_factor, second_buffer, second_factor):
@@ -928,32 +977,31 @@ class OpenclFibre(object):
             A_N =  A_L + (k0 + 2.0 * (k1 + k2) + k3) / 6.0
             return f.linear(A_N, hh)
         """
-
         inv_six = 1.0 / 6.0
         inv_three = 1.0 / 3.0
         half_step = 0.5 * stepsize
 
-        self.cl_linear(field, half_step, factor) #A_L
+        self.cl_linear(field, half_step, factor)  # A_L
 
         self.cl_copy(field_temp, field)
         self.cl_copy(field_linear, field)
-        self.cl_n(field_temp, stepsize) #k0
-        self.cl_sum(field, 1, field_temp, inv_six) #free k0
+        self.cl_n(field_temp, stepsize)  # k0
+        self.cl_sum(field, 1, field_temp, inv_six)  # free k0
 
         self.cl_sum(field_temp, 0.5, field_linear, 1)
-        self.cl_n(field_temp, stepsize) #k1
-        self.cl_sum(field, 1, field_temp, inv_three) #free k1
-        
+        self.cl_n(field_temp, stepsize)  # k1
+        self.cl_sum(field, 1, field_temp, inv_three)  # free k1
+
         self.cl_sum(field_temp, 0.5, field_linear, 1)
-        self.cl_n(field_temp, stepsize) #k2
-        self.cl_sum(field, 1, field_temp, inv_three) #free k2
-        
+        self.cl_n(field_temp, stepsize)  # k2
+        self.cl_sum(field, 1, field_temp, inv_three)  # free k2
+
         self.cl_sum(field_temp, 1, field_linear, 1)
-        self.cl_n(field_temp, stepsize) #k3
-        self.cl_sum(field, 1, field_temp, inv_six) #free k3
-        
+        self.cl_n(field_temp, stepsize)  # k3
+        self.cl_sum(field, 1, field_temp, inv_six)  # free k3
+
         self.cl_linear(field, half_step, factor)
-        
+
     def cl_rk4ip(self, field, field_temp, field_interaction, factor, stepsize):
         """ Runge-Kutta in the interaction picture method using OpenCL. """
         '''
@@ -965,6 +1013,7 @@ class OpenclFibre(object):
         k3 = h * f.n(f.linear(A_I + k2, hh), z + h)
         return (k3 / 6.0) + f.linear(A_I + (k0 + 2.0 * (k1 + k2)) / 6.0, hh)
         '''
+
         inv_six = 1.0 / 6.0
         inv_three = 1.0 / 3.0
         half_step = 0.5 * stepsize
@@ -972,22 +1021,22 @@ class OpenclFibre(object):
         self.cl_copy(field_temp, field)
         self.cl_linear(field, half_step, factor)
 
-        self.cl_copy(field_interaction, field) #A_I
+        self.cl_copy(field_interaction, field)  # A_I
         self.cl_n(field_temp, stepsize)
-        self.cl_linear(field_temp, half_step, factor) #k0
+        self.cl_linear(field_temp, half_step, factor)  # k0
 
-        self.cl_sum(field, 1.0, field_temp, inv_six) #free k0
+        self.cl_sum(field, 1.0, field_temp, inv_six)  # free k0
         self.cl_sum(field_temp, 0.5, field_interaction, 1.0)
-        self.cl_n(field_temp, stepsize) #k1
+        self.cl_n(field_temp, stepsize)  # k1
 
-        self.cl_sum(field, 1.0, field_temp, inv_three) #free k1
+        self.cl_sum(field, 1.0, field_temp, inv_three)  # free k1
         self.cl_sum(field_temp, 0.5, field_interaction, 1.0)
-        self.cl_n(field_temp, stepsize) #k2
+        self.cl_n(field_temp, stepsize)  # k2
 
-        self.cl_sum(field, 1.0, field_temp, inv_three) #free k2
+        self.cl_sum(field, 1.0, field_temp, inv_three)  # free k2
         self.cl_sum(field_temp, 1.0, field_interaction, 1.0)
         self.cl_linear(field_temp, half_step, factor)
-        self.cl_n(field_temp, stepsize) #k3
+        self.cl_n(field_temp, stepsize)  # k3
 
         self.cl_linear(field, half_step, factor)
 

@@ -230,8 +230,10 @@ class Solver(object):
         # A_N = f.nonlinear(A, 0.5 * h, A)
         # A_L = f.linear(A_N, h)
         # return f.nonlinear(A, 0.5 * h, A_L)
+
         A_L = f.linear(A, 0.5 * h)
         A_N = f.nonlinear(A, h, A_L)
+
         return f.linear(A_N, 0.5 * h)
 
     @staticmethod

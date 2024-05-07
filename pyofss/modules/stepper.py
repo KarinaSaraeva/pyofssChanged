@@ -94,7 +94,7 @@ class Stepper(object):
         self.cycle = cycle
         self.fibre_name = fibre_name
         # Check if adaptive stepsize is required:
-        if method.upper().startswith("A"):
+        if method.upper().startswith('A'):
             self.adaptive = True
             self.method = method[1:]
         else:
@@ -148,7 +148,7 @@ class Stepper(object):
 
     def standard_stepper(self, A, refrence_length):
         """ Take a fixed number of steps, each of equal length """
-        # ~print( "Starting ODE integration with fixed step-size... " ),
+        #~print( "Starting ODE integration with fixed step-size... " ),
 
         # Initialise:
         self.A_out = A
@@ -219,7 +219,7 @@ class Stepper(object):
         # Large step can result in infs or NaNs values
         # so, check it first
         if np.isnan(A_fine).any() or np.isinf(A_fine).any():
-            return 1.0
+            return 1.
 
         norm_fine = linalg.norm(A_fine)
 
@@ -232,7 +232,7 @@ class Stepper(object):
     def adaptive_stepper(self, A, refrence_length):
         """ Take multiple steps, with variable length, until target reached """
 
-        print("Starting ODE integration with adaptive step-size... ")
+        #~print("Starting ODE integration with adaptive step-size... ")
 
         # Initialise:
         self.A_out = A
@@ -333,18 +333,15 @@ class Stepper(object):
                         self.storage.append(z, self.A_out)
                         z_ignore += step_storage
                     break  # Successful attempt at step, move on to next step.
+
                 # Otherwise error was too large, continue with next attempt,
                 # but check the minimal step size first
                 else:
                     if h < self.step_size_min:
-                        raise SmallStepSizeError(
-                            "Step size is extremely small"
-                        )
+                        raise SmallStepSizeError("Step size is extremely small")
 
             else:
-                raise SuitableStepSizeError(
-                    "Failed to set suitable step-size"
-                )
+                raise SuitableStepSizeError("Failed to set suitable step-size")
 
             # If the desired z has been reached, then finish:
             if z >= self.length:
@@ -366,15 +363,13 @@ class Stepper(object):
 
             total_amount_of_steps = total_amount_of_steps + 1
 
-        raise MaximumStepsAllocatedError(
-            "Failed to complete with maximum steps allocated"
-        )
+        raise MaximumStepsAllocatedError("Failed to complete with maximum steps allocated")
 
 
 if __name__ == "__main__":
     """
     Exact solution: A(z) = 0.5 * ( 5.0 * exp(-2.0 * z) - 3.0 * exp(-4.0 * z) )
-    A(0) = 1.0 
+    A(0) = 1.0
     A(0.5) = 0.71669567807368684
     Numerical solution (RK4, total_steps = 5):      0.71668876283331295
     Numerical solution (RK4, total_steps = 50):     0.71669567757603803
@@ -389,9 +384,8 @@ if __name__ == "__main__":
         """ Just a simple function. """
         return 3.0 * np.exp(-4.0 * z) - 2.0 * A
 
-    stepper = Stepper(
-        f=simple, length=0.5, total_steps=50, method="RKF", traces=50
-    )
+    stepper = Stepper(f=simple, length=0.5, total_steps=50,
+                      method="RKF", traces=50)
     A_in = 1.0
     A_out = stepper(A_in)
     print("A_out = %.17f" % (A_out))
@@ -399,10 +393,10 @@ if __name__ == "__main__":
     x = stepper.storage.z
     y = stepper.storage.As
 
-    title = r"$\frac{dA}{dz} + 2A = 3 e^{-4z}$"
-    plt.title(r"Numerical integration of ODE:" + title)
-    plt.xlabel("z")
-    plt.ylabel("A(z)")
-    plt.plot(x, y, label="RKF: 50 steps")
+    title = r'$\frac{dA}{dz} + 2A = 3 e^{-4z}$'
+    plt.title(r'Numerical integration of ODE:' + title)
+    plt.xlabel('z')
+    plt.ylabel('A(z)')
+    plt.plot(x, y, label='RKF: 50 steps')
     plt.legend()
     plt.show()
