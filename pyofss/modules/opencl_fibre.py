@@ -386,6 +386,7 @@ class OpenclFibre(object):
             else:
                 self.factor = factor
 
+        self.storage.t = domain.t
         self.storage.nu = domain.nu
         self.storage.reset_fft_counter()
         self.storage.reset_array()

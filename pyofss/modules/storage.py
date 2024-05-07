@@ -210,7 +210,7 @@ class Storage(object):
         if reduced_range is not None:
             x, y = reduce_to_range(x, y, reduced_range[0], reduced_range[1])
 
-        z = self.z
+        z = np.array(self.z)
 
         return (x, y, z)
 
