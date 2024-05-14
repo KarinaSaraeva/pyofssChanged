@@ -18,9 +18,12 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+from numpy import amax, abs
 from .linearity import Linearity
 from .nonlinearity import Nonlinearity
 from .stepper import Stepper
+from pyofss.field import get_duration, temporal_power
+import warnings
 
 
 class Fibre(object):
@@ -69,12 +72,12 @@ class Fibre(object):
 
         self.name = name
         self.length = length
+        self.domain = None
         self.linearity = Linearity(alpha, beta, sim_type,
                                    use_cache, centre_omega)
         self.nonlinearity = Nonlinearity(gamma, sim_type, self_steepening,
                                          raman_scattering, rs_factor,
                                          use_all, tau_1, tau_2, f_R)
-        self.domain = None
 
         class Function():
             """ Class to hold linear and nonlinear functions. """
@@ -100,12 +103,21 @@ class Fibre(object):
             self.nonlinearity(domain)
             self.domain = domain
 
-        # Set temporal and spectral arrays for storage:
-        self.stepper.storage.t = domain.t
-        self.stepper.storage.nu = domain.nu
+        # Check relation between the step size and reference length
+        if not self.stepper.adaptive:
+            reflen = self.calculate_reference_length(field)
+            h = self.stepper.h
+            if h > reflen * 1e-2:
+                ld = self.get_dispersion_length(field)
+                ln = self.get_nonlinear_length(field)
+                warnings.warn(
+                    f"WARN: {self.name}: h must be much less than dispersion length (L_D={ld}) and the nonlinear length (L_NL={ln})\n        \
+                    now the minimum of the characteristic distances is equal to {reflen:.6f}*km* \n         \
+                    step is equal to {h}*km*"
+                )
 
         # Propagate field through fibre:
-        return self.stepper(field)
+        return self.stepper(field, domain)
 
     def l(self, A, z):
         """ Linear term. """
@@ -122,6 +134,28 @@ class Fibre(object):
     def nonlinear(self, A, h, B):
         """ Nonlinear term in exponential factor. """
         return self.nonlinearity.exp_non(A, h, B)
+
+    def calculate_reference_length(self, field):
+        L_D = self.get_dispersion_length(field)
+        L_NL = self.get_nonlinear_length(field)
+        if (L_NL is not None) and (L_D is not None):
+            return min(L_NL, L_D)
+        elif (L_NL is None) and (L_D is None):
+            return None
+        else:
+            return L_NL if L_D is None else L_D
+
+    def get_nonlinear_length(self, field):  # TODO move to Nonlinearity?
+        P_0 = amax(temporal_power(field))
+        L_NL = 1 / (self.nonlinearity.gamma * P_0)
+        return L_NL
+
+    def get_dispersion_length(self, field):  # TODO move to Linearity?
+        beta = self.linearity.beta
+        beta_2 = beta[2] if beta is not None else None
+        T_0 = get_duration(temporal_power(field), self.domain.dt)
+        L_D =  T_0**2 / abs(beta_2)
+        return L_D
 
 
 if __name__ == "__main__":
