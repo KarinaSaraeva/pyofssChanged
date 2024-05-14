@@ -1,5 +1,5 @@
 """
-    Copyright (C) 2011, 2012  David Bolt
+    Copyright (C) 2011, 2012  David Bolt, 2023 Vladislav Efremov
 
     This file is part of pyofss.
 
@@ -17,18 +17,15 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-import warnings
 import numpy as np
 from scipy import linalg
-# from tqdm import tqdm
-from pyofss.field import temporal_power
+# from tqdm import tqdm # TODO add progress of propagating through a fiber
 
 from .storage import Storage
 from .solver import Solver
 
+
 # Define exceptions
-
-
 class StepperError(Exception):
     pass
 
@@ -101,7 +98,7 @@ class Stepper(object):
             self.adaptive = False
             self.method = method
 
-        # ~print "Using {0} method".format( self.method )
+        #~print "Using {0} method".format( self.method )
 
         # Delegate method and function to solver
         self.solver = Solver(self.method, f)
@@ -109,9 +106,12 @@ class Stepper(object):
 
         self.length = length
         self.total_steps = total_steps
+        
+        # Require an initial step-size:
+        self.h = self.length / self.total_steps
 
         # Use a list of tuples ( z, A(z) ) for dense output if required:
-        self.storage = Storage(
+        self.storage = Storage(self.length, self.traces,
             dir, cycle=self.cycle, fibre_name=self.fibre_name, f=f_characts, downsampling=downsampling)
 
         # Store constants for adaptive method:
@@ -129,16 +129,19 @@ class Stepper(object):
 
         self.A_out = None
 
-    def __call__(self, A, refrence_length):
+    def __call__(self, A, domain=None):
         """ Delegate to appropriate function, adaptive- or standard-stepper """
 
+        # Reset storage on each new pass and set domain:
         self.storage.reset_fft_counter()
         self.storage.reset_array()
+        self.storage.domain = domain
 
+        # Perform numerical integration of the ODE
         if self.adaptive:
-            return self.adaptive_stepper(A, refrence_length)
+            return self.adaptive_stepper(A)
         else:
-            return self.standard_stepper(A, refrence_length)
+            return self.standard_stepper(A)
         
     def save_df_power(self):
         self.storage.save_all_storage_to_dir_as_df(save_power=True)
@@ -146,61 +149,34 @@ class Stepper(object):
     def save_df_complex(self):
         self.storage.save_all_storage_to_dir_as_df(save_power=False)
 
-    def standard_stepper(self, A, refrence_length):
+    def standard_stepper(self, A):
         """ Take a fixed number of steps, each of equal length """
         #~print( "Starting ODE integration with fixed step-size... " ),
 
         # Initialise:
         self.A_out = A
+        self.storage.append(0.0, self.A_out)
 
         # Require an initial step-size:
-        h = self.length / self.total_steps
-        if h > refrence_length * (10 ** (-2)):
-            warnings.warn(
-                f"{self.cycle}: {self.fibre_name}: h must be much less than dispersion length (L_D) and the nonlinear length (L_NL)\n        \
-                now the minimum of the characteristic distances is equal to {refrence_length:.6f}*km* \n         \
-                step is equal to {h}*km*"
-            )
+        h = self.h
 
         # Construct mesh points for z:
         zs = np.linspace(0.0, self.length, self.total_steps + 1)
 
-        storage_step = int(self.total_steps / self.traces)
-
-        # Construct mesh points for traces:
-        if self.traces != self.total_steps:
-            trace_zs = np.linspace(0.0, self.length, self.traces + 1)
-
-        # Make sure to store the initial A if more than one trace is required:
-
         # Start at z = 0.0 and repeat until z = length - h (inclusive),
         # i.e. z[-1]
-
-        # for i, z in enumerate(tqdm(zs[:-1])):
-        for i, z in enumerate(zs[:-1]):
+        for z in zs[:-1]:
             # Currently at L = z
-
             if self.solver.embedded:
                 self.A_out, A_other = self.step(self.A_out, z, h)
             else:
                 self.A_out = self.step(self.A_out, z, h)
             # Now at L = z + h
-
-            # If multiple traces required, store A_out at each relavant z
-            # value:
-            if self.traces != 1:
-                # MODIFIED: If multiple traces required, store A_out at z only IF needed
-                if (i % storage_step == 0):
-                    self.storage.append(z + h, self.A_out)
+            self.storage.append(z + h, self.A_out)
 
         # Store total number of fft and ifft operations that were used:
         self.storage.store_current_fft_count()
 
-        # Need to interpolate dense output to grid points set by traces:
-        
-        # MODIFIED: no longer needed
-        # if self.traces > 1 and (self.traces != self.total_steps):
-        #     self.storage.interpolate_As_for_z_values(trace_zs)
 
         self.save_df()
 
@@ -229,49 +205,32 @@ class Stepper(object):
         else:
             return linalg.norm(A_fine - A_coarse)
 
-    def adaptive_stepper(self, A, refrence_length):
+    def adaptive_stepper(self, A):
         """ Take multiple steps, with variable length, until target reached """
+        
+        #### Статья, где хорошо объясняется адпативный шаг, а также
+        #### исследуется его модифицированая версия:
+        #### DOI:10.1109/JLT.2009.2021538
 
         #~print("Starting ODE integration with adaptive step-size... ")
 
         # Initialise:
         self.A_out = A
         z = 0.0
-        # Require an initial step-size which will be adapted by the routine:
-        if self.traces > self.total_steps:
-            h = self.length / self.traces
-        else:
-            h = self.length / self.total_steps
 
-        # if (h > 0.01*refrence_length):
-        #     h = 0.01*refrence_length
-        if (h > 1e-6):
-            h = 1e-6
+        h = self.h
 
-        print(f"initial step size equals {h}")
-        total_amount_of_steps = 0
-        step_storage = self.length / self.traces
-        z_ignore = step_storage
         # Constants used for approximation of solution using local
         # extrapolation:
         f_eta = np.power(2, self.eta - 1.0)
         f_alpha = f_eta / (f_eta - 1.0)
         f_beta = 1.0 / (f_eta - 1.0)
 
-        hmin = h
-        # Calculate z-values at which to save traces.
-        if self.traces > 1:
-            # zs contains z-values for each trace, as well as the initial
-            # trace:
-            zs = np.linspace(0.0, self.length, self.traces + 1)
-
         # Store initial trace:
-        if self.traces != 1:
-            self.storage.append(z, self.A_out)
+        self.storage.append(z, self.A_out)
 
         # Limit the number of steps in case of slowly converging runs:
-        # for s in tqdm(range(1, self.steps_max)):
-        for s in (range(1, self.steps_max)):
+        for s in range(1, self.steps_max):
             # If step-size takes z our of range [0.0, length], then correct it:
             if (z + h) > self.length:
                 h = self.length - z
@@ -297,23 +256,19 @@ class Stepper(object):
 
                 # Store current stepsize:
                 h_temp = h
-                if hmin > h:
-                    hmin = h
+
                 # Adjust stepsize for next step:
                 if delta > 0.0:
                     error_ratio = self.local_error / delta
-                    factor = self.safety * np.power(
-                        error_ratio, 1.0 / self.eta
-                    )
-                    h = h_temp * min(
-                        self.max_factor, max(self.min_factor, factor)
-                    )
+                    factor = self.safety * np.power(error_ratio, 1.0 / self.eta)
+                    h = h_temp * min(self.max_factor,
+                                     max(self.min_factor, factor))
                 else:
                     # Error approximately zero, so use largest stepsize
                     # increase:
                     h = h_temp * self.max_factor
 
-                if (delta < 2.0 * self.local_error):
+                if delta < 2.0 * self.local_error:
                     # Successful step, so increment z h_temp (which is the
                     # stepsize that was used for this step):
                     z += h_temp
@@ -328,10 +283,8 @@ class Stepper(object):
 
                     # Store data on current z and stepsize used for each
                     # succesful step:
-                    if (z > z_ignore):
-                        self.storage.step_sizes.append((z, h_temp))
-                        self.storage.append(z, self.A_out)
-                        z_ignore += step_storage
+                    self.storage.step_sizes.append((z, h_temp))
+                    self.storage.append(z, self.A_out)
                     break  # Successful attempt at step, move on to next step.
 
                 # Otherwise error was too large, continue with next attempt,
@@ -348,10 +301,6 @@ class Stepper(object):
                 # Store total number of fft and ifft operations that were used:
                 self.storage.store_current_fft_count()
 
-                # MODIFIED: no longer needed   
-                # Interpolate dense output to uniformly-spaced z values:
-                # if self.traces > 1:
-                #     self.storage.interpolate_As_for_z_values(zs)
                 if (self.storage.dir_spec and self.storage.dir_temp):
                     if (self.save_represent == "power"):
                         self.storage.save_all_storage_to_dir_as_df(save_power=True)
@@ -360,8 +309,6 @@ class Stepper(object):
                     else:
                         print(f"flag should be one of these: 'power', 'complex'") 
                 return self.A_out
-
-            total_amount_of_steps = total_amount_of_steps + 1
 
         raise MaximumStepsAllocatedError("Failed to complete with maximum steps allocated")
 

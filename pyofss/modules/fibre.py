@@ -17,9 +17,8 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
-from scipy import power
-from scipy.signal import find_peaks, peak_widths
-from numpy import log10, amax, abs
+
+from numpy import amax, abs
 from pyofss.modules.amplifier import Amplifier, Amplifier2LevelModel
 from .linearity import Linearity
 from .nonlinearity import Nonlinearity
@@ -53,7 +52,7 @@ class Fibre(object):
     :param double tau_2: Constant used in Raman scattering calculation
     :param double f_R: Constant setting the fraction of Raman scattering used
     :param double small_signal_gain: Constant used in amplification fiber modeling [dB]
-    :params double E_sat: Saturation energy used in amplification fiber modeling [nJ]
+    :param double E_sat: Saturation energy used in amplification fiber modeling [nJ]
 
     sim_type is either default or wdm.
 
@@ -86,11 +85,6 @@ class Fibre(object):
         self.name = name
         self.length = length
         self.small_signal_gain = small_signal_gain
-        self.beta_2 = beta[2] if beta is not None else None
-        self.gamma = gamma
-        self.L_D = None
-        self.L_NL = None
-        self.reference_length = None
         self.cycle = cycle
         self.domain = None
         self.amplifier = None
@@ -138,13 +132,20 @@ class Fibre(object):
                 self.nonlinearity.factor is None:
             self.linearity(domain)
             self.nonlinearity(domain)
-            self.stepper.storage(domain)
             self.domain = domain
 
+        # Check relation between the step size and reference length
+        reflen = self.calculate_reference_length(field)
+        h = self.stepper.h
+        if h > reflen * 1e-2:
+            warnings.warn(
+                f"{self.cycle}: {self.fibre_name}: h must be much less than dispersion length (L_D) and the nonlinear length (L_NL)\n        \
+                now the minimum of the characteristic distances is equal to {reflen:.6f}*km* \n         \
+                step is equal to {h}*km*"
+            )
+
         # Propagate field through fibre:
-        self.calculate_reference_length(field)
-        field = self.stepper(field, self.reference_length)
-        return field
+        return self.stepper(field, domain)
 
     def l(self, A, z):
         """ Linear term. """
@@ -166,23 +167,25 @@ class Fibre(object):
         return self.linearity.amplification_step(A, h)
 
     def calculate_reference_length(self, field):
-        self.L_D = self.get_dispersion_length(field)
-        self.L_NL = self.get_nonlinear_length(field)
-        if (self.L_NL and self.L_D is not None):
-            self.reference_length = min(self.L_NL, self.L_D)
-        elif (self.L_NL or self.L_D is None):
-            self.reference_length = None
+        L_D = self.get_dispersion_length(field)
+        L_NL = self.get_nonlinear_length(field)
+        if (L_NL is not None) and (L_D is not None):
+            return min(L_NL, L_D)
+        elif (L_NL is None) and (L_D is None):
+            return None
         else:
-            self.reference_length = self.L_NL if self.L_D is None else self.L_D
+            return L_NL if L_D is None else L_D
 
-    def get_nonlinear_length(self, field):
+    def get_nonlinear_length(self, field):  # TODO move to Nonlinearity?
         P_0 = amax(temporal_power(field))
-        L_NL = 1 / (self.gamma * P_0)
+        L_NL = 1 / (self.nonlinearity.gamma * P_0)
         return L_NL
-    
-    def get_dispersion_length(self, field):
+
+    def get_dispersion_length(self, field):  # TODO move to Linearity?
+        beta = self.linearity.beta
+        beta_2 = beta[2] if beta is not None else None
         T_0 = get_duration(temporal_power(field), self.domain.dt)
-        L_D =  T_0**2 / abs(self.beta_2)
+        L_D =  T_0**2 / abs(beta_2)
         return L_D
 
 
