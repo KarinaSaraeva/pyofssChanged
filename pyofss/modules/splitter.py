@@ -24,7 +24,7 @@ import numpy as np
 
 class Splitter(object):
 
-    def __init__(self, name="splitter", channel=0, loss=0.0):
+    def __init__(self, name="splitter", loss=0.0, channel=0):
         # TODO negative values should be represent as dB
         self.name = name
         self.loss = loss

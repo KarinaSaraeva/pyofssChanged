@@ -26,7 +26,7 @@ class Coupler(object):
     Fiber coupler 2*2
     """
 
-    def __init__(self, ratio = [50, 50], name='coupler', invers = False):
+    def __init__(self, name='coupler', ratio=(50, 50), invers=False):
         self.name = name
         self.field = None
         self.invers = invers

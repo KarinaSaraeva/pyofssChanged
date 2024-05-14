@@ -22,6 +22,7 @@
 import numpy as np
 import scipy.fftpack
 import scipy.integrate as integrate
+from scipy.signal import find_peaks, peak_widths
 
 try:
     import pyfftw
@@ -47,7 +48,7 @@ def temporal_power(A_t, normalise=False):
     """
     P = np.abs(A_t) ** 2
 
-    if(normalise):
+    if normalise:
         P /= max(P)
 
     return P
@@ -65,7 +66,7 @@ def spectral_power(A_t, normalise=False):
     """
     P = np.abs(fft(A_t)) ** 2
 
-    if(normalise):
+    if normalise:
         P /= max(P)
 
     return ifftshift(P)
@@ -80,7 +81,7 @@ def phase(A_t, unwrap=True):
 
     Generate an array of phase angles from complex amplitudes array.
     """
-    if(unwrap):
+    if unwrap:
         return np.unwrap(np.angle(A_t))
     else:
         return np.angle(A_t)
@@ -96,7 +97,7 @@ def chirp(A_t, window_nu, unwrap=True):
 
     Generate an array of chirp values from complex amplitudes array.
     """
-    if(unwrap):
+    if unwrap:
         return -np.gradient(phase(A_t, True)) * window_nu
     else:
         return -np.gradient(phase(A_t, False)) * window_nu
@@ -153,16 +154,17 @@ def fftshift(A_nu):
     """
     return scipy.fftpack.ifftshift(A_nu)
 
+
 def energy(A_t, t):
     """
     :param array_like A_t: Input field array in the temporal domain
     :param double t: Temporal window of the simulation
     :return: Energy of the field
     :rtype: double
-    
+
     Energy calculation
     """
-    E = integrate.simps(temporal_power(A_t), t*1e-3) #nJ
+    E = integrate.simps(temporal_power(A_t), t * 1e-3)  # nJ
 
     return E
 
@@ -172,11 +174,12 @@ def inst_freq(A_t, dt):
     :param array_like A_t: Input field array in the temporal domain
     :return: Instant frequency array
     :rtype: array_like
-    
+
     Generate an array of instantaneous frequency
     """
     ph = phase(A_t)
-    return np.append(np.diff(ph)/dt, 0.)
+    return np.append(np.diff(ph) / dt, 0.0)
+
 
 def loss_infrared_db(wl):
     """
@@ -202,3 +205,31 @@ def loss_rayleigh_db(wl):
     factor = -10*np.log10(factor)
     return factor
 
+
+def max_peak_params(P, prominence):
+    """
+    :param power array *Unit: W*
+
+    :return:
+    param double power_max: maximum power *Unit: W*,
+    param double pulse_fwhm: FWHM *Unit: input arr indexes*,
+    param double left_ind, right_ind: interpolated positions of left and right intersection points of a FWHM line *Unit: input arr indexes*,
+    """
+    peaks, properties = find_peaks(P, height=0)
+    max_peak_ind = np.argmax(properties["peak_heights"])
+    results_fwhm = peak_widths(P, [peaks[max_peak_ind]], rel_height=0.5)
+
+    ind_max = np.argmax(results_fwhm[1])
+
+    heigth_fwhm = results_fwhm[1][ind_max]
+    fwhm = results_fwhm[0][ind_max]  # the hightest peak's fwhm
+
+    left_ind = results_fwhm[2][ind_max]
+    right_ind = results_fwhm[3][ind_max]
+
+    return heigth_fwhm, fwhm, left_ind, right_ind
+def get_duration(P, d_x, prominence=None):
+    if prominence is None:
+        prominence = np.amax(P) / 100
+    heigth_fwhm, fwhm, left_ind, right_ind = max_peak_params(P, prominence=prominence)
+    return fwhm * d_x

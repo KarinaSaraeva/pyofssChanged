@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2011, 2012  David Bolt, 2023 Vladislav Efremov
 
@@ -20,9 +19,11 @@
 
 import numpy as np
 from scipy import linalg
+# from tqdm import tqdm # TODO add progress of propagating through a fiber
 
 from .storage import Storage
 from .solver import Solver
+
 
 # Define exceptions
 class StepperError(Exception):
@@ -95,14 +96,17 @@ class Stepper(object):
 
         self.length = length
         self.total_steps = total_steps
+        
+        # Require an initial step-size:
+        self.h = self.length / self.total_steps
 
         # Use a list of tuples ( z, A(z) ) for dense output if required:
         self.storage = Storage(self.length, self.traces)
 
         # Store constants for adaptive method:
-        self.total_attempts = 100
-        self.steps_max = 50000
-        self.step_size_min = 1e-37 # some small value
+        self.total_attempts = 1000
+        self.steps_max = 100000
+        self.step_size_min = 1e-37  # some small value
 
         self.safety = 0.9
         self.max_factor = 10.0
@@ -112,14 +116,16 @@ class Stepper(object):
         self.eta = self.solver.errors[self.method.lower()]
 
         self.A_out = None
-        
 
-    def __call__(self, A):
+    def __call__(self, A, domain=None):
         """ Delegate to appropriate function, adaptive- or standard-stepper """
 
+        # Reset storage on each new pass and set domain:
         self.storage.reset_fft_counter()
         self.storage.reset_array()
+        self.storage.domain = domain
 
+        # Perform numerical integration of the ODE
         if self.adaptive:
             return self.adaptive_stepper(A)
         else:
@@ -134,7 +140,7 @@ class Stepper(object):
         self.storage.append(0.0, self.A_out)
 
         # Require an initial step-size:
-        h = self.length / self.total_steps
+        h = self.h
 
         # Construct mesh points for z:
         zs = np.linspace(0.0, self.length, self.total_steps + 1)
@@ -179,13 +185,13 @@ class Stepper(object):
         #### исследуется его модифицированая версия:
         #### DOI:10.1109/JLT.2009.2021538
 
-        #~print( "Starting ODE integration with adaptive step-size... " ),
+        #~print("Starting ODE integration with adaptive step-size... ")
 
         # Initialise:
         self.A_out = A
         z = 0.0
 
-        h = self.length / self.total_steps
+        h = self.h
 
         # Constants used for approximation of solution using local
         # extrapolation:
@@ -193,6 +199,7 @@ class Stepper(object):
         f_alpha = f_eta / (f_eta - 1.0)
         f_beta = 1.0 / (f_eta - 1.0)
 
+        # Store initial trace:
         self.storage.append(z, self.A_out)
 
         # Limit the number of steps in case of slowly converging runs:
@@ -225,9 +232,8 @@ class Stepper(object):
 
                 # Adjust stepsize for next step:
                 if delta > 0.0:
-                    error_ratio = (self.local_error / delta)
-                    factor = \
-                        self.safety * np.power(error_ratio, 1.0 / self.eta)
+                    error_ratio = self.local_error / delta
+                    factor = self.safety * np.power(error_ratio, 1.0 / self.eta)
                     h = h_temp * min(self.max_factor,
                                      max(self.min_factor, factor))
                 else:
@@ -252,7 +258,6 @@ class Stepper(object):
                     # succesful step:
                     self.storage.step_sizes.append((z, h_temp))
                     self.storage.append(z, self.A_out)
-
                     break  # Successful attempt at step, move on to next step.
 
                 # Otherwise error was too large, continue with next attempt,
@@ -272,6 +277,7 @@ class Stepper(object):
                 return self.A_out
 
         raise MaximumStepsAllocatedError("Failed to complete with maximum steps allocated")
+
 
 if __name__ == "__main__":
     """

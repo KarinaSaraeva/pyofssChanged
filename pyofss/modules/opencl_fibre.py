@@ -40,6 +40,9 @@ from .nonlinearity import Nonlinearity
 from .storage import Storage
 
 OPENCL_OPERATIONS = Template("""
+    #ifdef cl_arm_printf
+        #pragma OPENCL EXTENSION cl_amd_printf: enable
+    #endif
     #ifdef cl_khr_fp64 // Khronos extension
         #pragma OPENCL EXTENSION cl_khr_fp64 : enable
         #define PYOPENCL_DEFINE_CDOUBLE
@@ -58,7 +61,7 @@ OPENCL_OPERATIONS = Template("""
 
         factor[gid] = c${dorf}_exp(c${dorf}_mulr(factor[gid], stepsize));
     }
-    
+
     __kernel void cl_factor(__global c${dorf}_t* buf_factor,
                            __global c${dorf}_t* factor,
                            const ${dorf} stepsize) {
@@ -72,6 +75,23 @@ OPENCL_OPERATIONS = Template("""
         int gid = get_global_id(0);
 
         field[gid] = c${dorf}_mul(field[gid], factor[gid]);
+    }
+
+    __kernel void cl_linear_cached(__global c${dorf}_t* field,
+                                   __global c${dorf}_t* factor) {
+        int gid = get_global_id(0);
+
+        field[gid] = c${dorf}_mul(field[gid], factor[gid]);
+    }
+
+    __kernel void cl_linear_cached_with_amplification(__global c${dorf}_t* field,
+                                   __global c${dorf}_t* factor, __global ${dorf}* amp_factor) {
+        int gid = get_global_id(0);
+        c${dorf}_t local_factor = factor[gid];
+
+        local_factor.real = local_factor.real*amp_factor[gid];
+        local_factor.imag = local_factor.imag*amp_factor[gid];
+        field[gid] = c${dorf}_mul(field[gid], local_factor);
     }
 
     __kernel void cl_linear(__global c${dorf}_t* field,
@@ -213,6 +233,90 @@ OPENCL_OPERATIONS = Template("""
         else
         {
             field[gid] = subfield2[gid-n];
+        }
+    }
+
+    __kernel void cl_power(__global c${dorf}_t* field,
+                                __global ${dorf}* power_buffer) {
+        int gid = get_global_id(0);
+    
+        c${dorf}_t c = field[gid];
+        power_buffer[gid] = c.real * c.real + c.imag * c.imag;
+    }
+
+    kernel void cl_interpolate(__global ${dorf}* input, const ${dorf} n_input, __global ${dorf}* output, const ${dorf} n_output) {
+        int i = get_global_id (0); // index of output element
+        float t = (float)i / ((float)n_output); // normalized coordinate in [0, 1]
+        int j = (int)(t * (n_input - 1)); // lower index of input element
+        ${dorf} u = t * (n_input - 1) - j; // fractional part of input element
+        ${dorf} v0 = input[j]; // lower input value
+        ${dorf} v1 = input[j + 1]; // upper input value
+        ${dorf} v = mix(v0, v1, u); // linear interpolation
+        output[i] = v; // store interpolated value
+    }
+
+    __kernel void cl_physical_power(__global c${dorf}_t* field, __global const ${dorf}* factor,
+                                __global ${dorf}* power_buffer) {
+        int gid = get_global_id(0);
+    
+        c${dorf}_t c = field[gid];
+        power_buffer[gid] = (c.real * c.real + c.imag * c.imag)*factor[0];
+    }
+    
+    __kernel void cl_simpson(__global ${dorf}* power_buffer, __global ${dorf}* output, const ${dorf} h) {
+        int gid = get_global_id(0);  
+        if (!(gid % 2)) {
+            ${dorf} x0 = power_buffer[gid];
+            ${dorf} x1 = power_buffer[gid + 1];
+            ${dorf} x2 = power_buffer[gid + 2];
+            
+            ${dorf} result = (x0 + (${dorf})4.0f * x1 + x2);
+            output[gid] = result * h / ((${dorf})3.0f) ;
+        }    
+    }
+
+    __kernel void cl_calculate_g_s_exponent_const(__global ${dorf}* g_s, __global const ${dorf}* alpha_s, __global const ${dorf}* eta_s, const ${dorf} N2, const ${dorf} h) {
+        int gid = get_global_id(0);
+        g_s[gid] = exp((alpha_s[gid] * N2 - eta_s[gid])*h);
+    }
+                             
+    __kernel void cl_multiply_array_by_factor(__global ${dorf}* array,
+                            const ${dorf} factor, __global ${dorf}* result) {
+        int gid = get_global_id(0);
+        result[gid] = array[gid]*factor;
+    }  
+
+    __kernel void cl_calculate_array_exponent(__global ${dorf}* array) {
+        int gid = get_global_id(0);
+        array[gid] = exp(array[gid]);
+    }
+
+    __kernel void cl_array_exponent_with_factor(__global ${dorf}* array,
+                            const ${dorf} factor, __global ${dorf}* result) {
+        int gid = get_global_id(0);
+
+        result[gid] = exp(array[gid]*factor);
+    }                                                 
+
+    __kernel void multiply_array_by_another_const(__global ${dorf}* array1,
+                            __global const ${dorf}* array2) {
+        int gid = get_global_id(0);
+        array1[gid] = array1[gid]*array2[gid];
+    }
+    
+    __kernel void devide_array_by_another_const(__global ${dorf}* array1, __global const ${dorf}* array2) {
+        int gid = get_global_id(0);
+        array1[gid] = array1[gid]/array2[gid]; 
+    }
+
+    __kernel void cl_fftshift(__global ${dorf}* input, const ${dorf} n) {
+        int half_n = (int)(n / 2);
+        int gid = get_global_id(0);
+        if (gid < half_n)
+        {
+            ${dorf} tmp = input[gid];
+            input[gid] = input[gid + half_n];
+            input[gid + half_n] = tmp;
         }
     }
 
@@ -386,8 +490,7 @@ class OpenclFibre(object):
             else:
                 self.factor = factor
 
-        self.storage.t = domain.t
-        self.storage.nu = domain.nu
+        self.storage.domain = domain
         self.storage.reset_fft_counter()
         self.storage.reset_array()
         self.storage.append(0.0, field)

@@ -25,8 +25,8 @@ from .linearity import Linearity
 
 class Dispersion(object):
 
-    def __init__(self, name = 'disp', channel = 0,
-                 beta=None, centre_omega=None):
+    def __init__(self, name = 'disp', beta=None, 
+                 centre_omega=None, channel=0):
         """
         :param array_like beta: Array of dispersion parameters
 

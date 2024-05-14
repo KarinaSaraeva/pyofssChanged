@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2012  David Bolt, 2023 Vladislav Efremov
 
@@ -20,16 +19,15 @@
 
 import numpy as np
 import math
-
 from scipy.interpolate import interpn
 
 from pyofss import field
-from pyofss.field import temporal_power
-from pyofss.field import spectral_power
+from pyofss.field import temporal_power, spectral_power
 
 try:
     import pyopencl.array as pycl_array
 except ImportError:
+    pycl_array = None
     print("OpenCL is not activated, Storage will work with NumPy arrays only")
 
 
@@ -47,6 +45,7 @@ def reduce_to_range(x, ys, first_value, last_value):
     """
     print("Attempting to reduce storage arrays to specified range...")
     if last_value > first_value:
+
         def find_nearest(array, value):
             """ Return the index and value closest to those provided. """
             index = (np.abs(array - value)).argmin()
@@ -55,22 +54,30 @@ def reduce_to_range(x, ys, first_value, last_value):
         first_index, x_first = find_nearest(x, first_value)
         last_index, x_last = find_nearest(x, last_value)
 
-        print("Required range: [{0}, {1}]\nActual range: [{2}, {3}]".format(
-            first_value, last_value, x_first, x_last))
+        print(
+            "Required range: [{0}, {1}]\nActual range: [{2}, {3}]".format(
+                first_value, last_value, x_first, x_last
+            )
+        )
 
         # The returned slice does NOT include the second index parameter. To
         # include the element corresponding to last_index, the second index
         # parameter should be last_index + 1:
-        sliced_x = x[first_index:last_index + 1]
+        sliced_x = x[first_index: last_index + 1]
 
         # ys is a list of arrays. Does each array contain additional arrays:
         import collections
+
         if isinstance(ys[0][0], collections.Iterable):
-            sliced_ys = [[y_c0[first_index:last_index + 1],
-                          y_c1[first_index:last_index + 1]]
-                         for (y_c0, y_c1) in ys]
+            sliced_ys = [
+                [
+                    y_c0[first_index: last_index + 1],
+                    y_c1[first_index: last_index + 1],
+                ]
+                for (y_c0, y_c1) in ys
+            ]
         else:
-            sliced_ys = [y[first_index:last_index + 1] for y in ys]
+            sliced_ys = [y[first_index: last_index + 1] for y in ys]
 
         return sliced_x, sliced_ys
     else:
@@ -93,14 +100,12 @@ class Storage(object):
         else:
             self.trace_zs = np.linspace(0.0, self.length, self.traces + 1)
         self.trace_n = 0
-        self.t = []
+        self.domain = None
         self.As = []
         self.z = []
 
         self.buff_As = []
         self.buff_z = []
-
-        self.nu = []
 
         # List of tuples of the form (z, h); one tuple per successful step:
         self.step_sizes = []
@@ -123,9 +128,9 @@ class Storage(object):
         self.fft_total = field.fft_counter
 
     def get_A(self, A):
-        if isinstance(A, np.ndarray):
+        if isinstance(A, np.ndarray) or isinstance(A, float):
             return A
-        elif isinstance(A, pycl_array.Array):
+        elif pycl_array and isinstance(A, pycl_array.Array):
             return A.get()
         else:
             raise TypeError("unsupported type {} is stored".format(type(A)))
@@ -190,22 +195,22 @@ class Storage(object):
         temporal/spectral power array, and array of z values for the x,y data.
         """
         if is_temporal:
-            x = self.t
+            x = self.domain.t
             calculate_power = temporal_power
         else:
-            x = self.nu
+            x = self.domain.nu
             calculate_power = spectral_power
 
         if channel is not None:
-            temp = [calculate_power(A[channel]) for A in self.As]
+            power = [calculate_power(A[channel]) for A in self.As]
         else:
-            temp = [calculate_power(A) for A in self.As]
+            power = [calculate_power(A) for A in self.As]
 
         if normalised:
-            factor = max(temp[0])
-            y = [t / factor for t in temp]
+            factor = max(power[0])
+            y = [t / factor for t in power]
         else:
-            y = temp
+            y = power
 
         if reduced_range is not None:
             x, y = reduce_to_range(x, y, reduced_range[0], reduced_range[1])
@@ -265,6 +270,7 @@ class Storage(object):
         from scipy.interpolate import barycentric_interpolate, pchip_interpolate
         As = np.array(As)
         if As[0].dtype.name.startswith('complex'):
+            # TODO: interpolation of amplitude and phase may be better
             As1_r = barycentric_interpolate(self.buff_z, np.real(As), zs)
             As1_i = barycentric_interpolate(self.buff_z, np.imag(As), zs)
             As = As1_r + 1j*As1_i
@@ -283,17 +289,17 @@ if __name__ == "__main__":
 
     domain = Domain(bit_width=200.0, total_bits=8, samples_per_bit=512 * 32)
     gaussian = Gaussian(peak_power=1.0, width=1.0)
+    beta = [0.0, 0.0, 1.0, 1.0]
 
     traces = np.arange(7, 201, 11)
 
     fibers = {f'{key}': Fibre(
-                         length=20,
+                         length=0.020,
                          method='rk4ip',
-                         total_steps=200,
+                         total_steps=20,
                          traces=key,
-                         beta=[0.0, 0.0, 0.0, 1.0],
+                         beta=beta,
                          gamma=1.5,
-                         use_all='hollenbeck'
                          ) for key in traces}
 
     dur = []
@@ -316,8 +322,8 @@ if __name__ == "__main__":
         z1 = stor.z[-int(numb/2)]
         print(z1)
 
-        fiber0 = Fibre(length=z1, method='rk4ip', total_steps=300, traces=1,
-                       beta=[0.0, 0.0, 0.0, 1.0], gamma=1.5, use_all='hollenbeck')
+        fiber0 = Fibre(length=z1, method='rk4ip', total_steps=30, traces=1,
+                       beta=beta, gamma=1.5)
         sys0 = System(domain)
         sys0.add(gaussian)
         sys0.add(fiber0)
