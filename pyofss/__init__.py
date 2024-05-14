@@ -29,7 +29,7 @@ from .domain import Domain
 from .modules.generator import Generator
 from .modules.gaussian import Gaussian
 from .modules.sech import Sech
-from .modules.amplifier import Amplifier, Amplifier2LevelModel
+from .modules.amplifier import AmplifierDistributed, Amplifier2LevelModel
 from .modules.bit import Bit, Bit_stream
 from .modules.fibre import Fibre
 from .modules.storage import reduce_to_range

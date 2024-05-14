@@ -211,6 +211,7 @@ class Storage(object):
         if self.traces < 1:
             self.z.append(z)
             self.As.append(self.get_A(A))
+            self.update_characts(A)
         # Проверяем, совпадает ли текущая длина с точкой сохранения
         # если совпадает, сохраняем поле, переходим к следующей точке сохранения
         # и добавляем в буффер
@@ -219,6 +220,7 @@ class Storage(object):
 
             self.z.append(z)
             self.As.append(self.get_A(A))
+            self.update_characts(A)
 
             self.buff_z = [z]
             self.buff_As = [self.get_A(A)]

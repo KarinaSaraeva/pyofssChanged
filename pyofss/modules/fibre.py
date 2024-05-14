@@ -19,7 +19,7 @@
 """
 
 from numpy import amax, abs
-from pyofss.modules.amplifier import Amplifier, Amplifier2LevelModel
+from pyofss.modules.amplifier import AmplifierDistributed, Amplifier2LevelModel
 from .linearity import Linearity
 from .nonlinearity import Nonlinearity
 from .stepper import Stepper
@@ -93,8 +93,8 @@ class Fibre(object):
             self.amplifier = Amplifier2LevelModel(Pp=Pp_0, N=N, Rr=Rr)
         else:
             if (small_signal_gain is not None) and (E_sat is not None or (P_sat is not None and Tr is not None)):
-                self.amplifier = Amplifier(
-                    gain=self.small_signal_gain, E_sat=E_sat, P_sat=P_sat, Tr=Tr, length=self.length, lamb0=lamb0, bandwidth=bandwidth, use_Er_profile=use_Er_profile)
+                self.amplifier = AmplifierDistributed(
+                    gain=self.small_signal_gain, E_sat=E_sat, P_sat=P_sat, rep_rate=1e3/Tr, length=self.length, lamb0=lamb0, bandwidth=bandwidth, use_Er_profile=use_Er_profile)
 
         self.linearity = Linearity(alpha=alpha, beta=beta, sim_type=sim_type,
                                    use_cache=use_cache, centre_omega=centre_omega, amplifier=self.amplifier, use_Er_noise=use_Er_noise)

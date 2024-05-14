@@ -147,13 +147,14 @@ def visualise_fields_df(fields_df, y_arr, y_label="", y_lims=None, auto_lims=Fal
         for j, fibre_name in enumerate(fibre_names):
             fibre_df = fields_df.loc[cycle_name].loc[fibre_name]
             z = fibre_df.index.get_level_values('z [mm]').values
+            h = fibre_df.values.transpose()
 
             if auto_lims:
                 _, _, left_idx_start, right_idx_start = spectrum_width_params(h[:, 0], h[:, 0].max()/10)
                 _, _, left_idx_end, right_idx_end = spectrum_width_params(h[:, -1], h[:, -1].max()/10)
 
-                left_idx = min(left_idx_start, left_idx_end) - 100
-                right_idx = max(right_idx_start, right_idx_end) + 100
+                left_idx = int(min(left_idx_start, left_idx_end) - 100)
+                right_idx = int(max(right_idx_start, right_idx_end) + 100)
 
                 # left_lim_start, right_lim_start = y_arr[[int(left_idx), int(right_idx)]]
                 # ax[i, j].set_ylim(left_lim_start, right_lim_start)
@@ -168,6 +169,8 @@ def visualise_fields_df(fields_df, y_arr, y_label="", y_lims=None, auto_lims=Fal
                 right_idx = np.max(indices)
                 X, Y = np.meshgrid(z, y_arr[left_idx:right_idx])
                 h = fibre_df.values[:, left_idx:right_idx].transpose()
+            else:
+                X, Y = np.meshgrid(z, y_arr)
             
             cf = ax[i, j].pcolormesh(X, Y, h, shading='auto', cmap=plt.cm.get_cmap('plasma'), vmin=min_value, vmax=max_value)
             

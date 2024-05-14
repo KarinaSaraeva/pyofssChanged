@@ -38,7 +38,7 @@ from string import Template
 
 from .linearity import Linearity
 from .nonlinearity import Nonlinearity
-from pyofss.modules.amplifier import Amplifier, Amplifier2LevelModel
+from pyofss.modules.amplifier import AmplifierDistributed, Amplifier2LevelModel
 from pyofss.field import temporal_power, get_duration
 from scipy.signal import find_peaks, peak_widths
 import warnings
@@ -75,13 +75,6 @@ OPENCL_OPERATIONS = Template("""
         int gid = get_global_id(0);
 
         buf_factor[gid] = c${dorf}_exp(c${dorf}_mulr(factor[gid], stepsize));
-    }
-
-    __kernel void cl_linear_cached(__global c${dorf}_t* field,
-                                   __global c${dorf}_t* factor) {
-        int gid = get_global_id(0);
-
-        field[gid] = c${dorf}_mul(field[gid], factor[gid]);
     }
 
     __kernel void cl_linear_cached(__global c${dorf}_t* field,
@@ -453,7 +446,8 @@ class OpenclProgramm(object):
         self.plan(d,d,inverse=inverse)
 
 
-def get_device_memory_info():
+def get_device_memory_info():  # TODO should work both with NVidia and AMD cards
+    '''
     nvmlInit()
     handle = nvmlDeviceGetHandleByIndex(0)
     info = nvmlDeviceGetMemoryInfo(handle)
@@ -462,6 +456,8 @@ def get_device_memory_info():
     # print("Free memory: {} MiB".format(info.free >> 20))
     print("Used memory: {} MiB".format(info.used >> 20))
     nvmlShutdown()
+    '''
+    return
 
 class OpenclFibre(object):
     """
