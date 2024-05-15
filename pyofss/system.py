@@ -53,7 +53,7 @@ def field_load(filename="field_out"):
     else:
         try:
             d = np.load(filename + ".npz")["field"]
-        except:
+        except FileNotFoundError:
             d = np.load(filename + ".npy")
     return d
 
@@ -76,7 +76,8 @@ class System(object):
         self.modules = None
         self.clear(remove_modules=True)
 
-        self.field = field
+        if field is not None:
+            self.field = field
 
         self.df_results = None
         self.df_fields = None
@@ -119,7 +120,8 @@ class System(object):
         Clear (remove) all modules if requested.
         """
         if self.domain.channels > 1:
-            self.field = [np.zeros([self.domain.total_samples], complex) for channel in range(self.domain.channels)]
+            self.field = np.zeros(self.domain.total_samples*self.domain.channels, complex
+                                  ).reshape(self.domain.channels, self.domain.total_samples)
         else:
             self.field = np.zeros([self.domain.total_samples], complex)
 
