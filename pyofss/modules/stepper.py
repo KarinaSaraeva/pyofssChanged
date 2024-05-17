@@ -50,10 +50,7 @@ class Stepper(object):
     :param object f: Derivative function to be solved
     :param double length: Length to integrate over
     :param Uint total_steps: Number of steps to use for ODE integration
-    :param string dir: directory to save all the storage
     :param string save_represent: "power" or "complex" type of dataframe saved
-    :param cycle string: cycle name in dataframe
-    :param fibre_name: fibre name in dataframe
 
     method:
       * EULER -- Euler method;
@@ -81,15 +78,9 @@ class Stepper(object):
     """
 
     def __init__(self, traces=1, local_error=1.0e-6, method="RK4",
-                 f=None, f_characts=None, length=1.0, total_steps=100, dir=None, save_represent="power", cycle=None, fibre_name=None, downsampling=None):
+                 f=None, f_characts=None, length=1.0, total_steps=100):
         self.traces = traces
         self.local_error = local_error
-        try:
-            self.save_df = getattr(self, "save_df_" + save_represent)
-        except AttributeError:
-            print("No such method: save_represent should be either 'complex' or 'power'")
-        self.cycle = cycle
-        self.fibre_name = fibre_name
         # Check if adaptive stepsize is required:
         if method.upper().startswith('A'):
             self.adaptive = True
@@ -111,8 +102,7 @@ class Stepper(object):
         self.h = self.length / self.total_steps
 
         # Use a list of tuples ( z, A(z) ) for dense output if required:
-        self.storage = Storage(self.length, self.traces,
-            dir, cycle=self.cycle, fibre_name=self.fibre_name, f=f_characts, downsampling=downsampling)
+        self.storage = Storage(self.length, self.traces)
 
         # Store constants for adaptive method:
         self.total_attempts = 1000
@@ -143,12 +133,6 @@ class Stepper(object):
         else:
             return self.standard_stepper(A)
         
-    def save_df_power(self):
-        self.storage.save_all_storage_to_dir_as_df(save_power=True)
-
-    def save_df_complex(self):
-        self.storage.save_all_storage_to_dir_as_df(save_power=False)
-
     def standard_stepper(self, A):
         """ Take a fixed number of steps, each of equal length """
         #~print( "Starting ODE integration with fixed step-size... " ),
@@ -178,15 +162,8 @@ class Stepper(object):
         self.storage.store_current_fft_count()
 
 
-        self.save_df()
-
         return self.A_out
     
-    def save_power(self):
-        self.storage.save_all_storage_to_dir_as_df(save_power=True)
-
-    def save_complex_field(self):
-        self.storage.save_all_storage_to_dir_as_df(save_power=False)
 
     @staticmethod
     def relative_local_error(A_fine, A_coarse):

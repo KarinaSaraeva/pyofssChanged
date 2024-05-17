@@ -71,7 +71,7 @@ from .field import energy
 from .field import inst_freq
 from .field import loss_infrared_db
 from .field import loss_rayleigh_db
-from .field import get_downsampled, get_duration, get_duration_spec
+from .field import get_downsampled, get_duration, get_bandwidth
 
 # Import pulse width conversion function
 from .modules.generator import convert_pulse_width

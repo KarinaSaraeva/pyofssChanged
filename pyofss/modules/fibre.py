@@ -24,8 +24,9 @@ from .linearity import Linearity
 from .nonlinearity import Nonlinearity
 from .stepper import Stepper
 from pyofss.domain import Domain
-from pyofss.field import get_duration_spec, get_duration, temporal_power
+from pyofss.field import get_duration, temporal_power
 
+import warnings
 
 class FiberInitError(Exception):
     pass
@@ -77,15 +78,13 @@ class Fibre(object):
                  tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18, 
                  small_signal_gain=None, E_sat=None, P_sat=None, Tr=None, lamb0=None, bandwidth=None, 
                  use_Er_profile=False, use_Er_noise=False,
-                 use_Yb_model=False, Pp_0 = None, N = None, Rr=None,
-                 dir=None, save_represent="power", cycle=None, downsampling=None):
+                 use_Yb_model=False, Pp_0 = None, N = None, Rr=None):
 
         use_cache = not(method.upper().startswith('A'))
 
         self.name = name
         self.length = length
         self.small_signal_gain = small_signal_gain
-        self.cycle = cycle
         self.domain = None
         self.amplifier = None
 
@@ -124,7 +123,7 @@ class Fibre(object):
         self.function_characts = FunctionCharacts(self.get_dispersion_length, self.get_nonlinear_length)
 
         self.stepper = Stepper(traces, local_error, method, self.function_step, self.function_characts,
-                               self.length, total_steps, dir, save_represent, cycle=self.cycle, fibre_name=self.name, downsampling=downsampling)
+                               self.length, total_steps)
 
     def __call__(self, domain, field):
         if self.domain != domain or \
@@ -139,7 +138,7 @@ class Fibre(object):
         h = self.stepper.h
         if h > reflen * 1e-2:
             warnings.warn(
-                f"{self.cycle}: {self.fibre_name}: h must be much less than dispersion length (L_D) and the nonlinear length (L_NL)\n        \
+                f"WARN: {self.name}: h must be much less than dispersion length (L_D) and the nonlinear length (L_NL)\n        \
                 now the minimum of the characteristic distances is equal to {reflen:.6f}*km* \n         \
                 step is equal to {h}*km*"
             )
