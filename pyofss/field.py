@@ -23,9 +23,11 @@ import numpy as np
 import scipy.fftpack
 import scipy.integrate as integrate
 from scipy.signal import find_peaks, peak_widths
+from scipy.interpolate import interp1d
 
 try:
     import pyfftw
+
     scipy.fftpack = pyfftw.interfaces.scipy_fftpack
     pyfftw.interfaces.cache.enable()
     print("PyFFTW has been imported, use PYFFTW_NUM_THREADS and PYFFTW_PLANNER_EFFORT for tuning")
@@ -36,6 +38,7 @@ except:
 # Although use of global variables is generally a bad idea, in this case it is
 # a simple solution to recording the number of ffts used:
 fft_counter = 0
+
 
 def temporal_power(A_t, normalise=False):
     """
@@ -185,13 +188,14 @@ def loss_infrared_db(wl):
     """
     :param wavelength, nm
     :return: losses in dB
-    
+
     See Agrawal "Fiber-Optic Communication Systems" ch2 page 56
     x = [1500, 1600, 1650, 1700, 1750, 1800] wavelengths
     y = [0.01, 0.05, 0.1, 0.3, 1, 2.5] losses in dB
     """
-    p = np.array([-1.75292532e+03,  1.95607318e-02])
-    return np.exp(p[1]*(wl+p[0]))
+    p = np.array([-1.75292532e+03, 1.95607318e-02])
+    return np.exp(p[1] * (wl + p[0]))
+
 
 def loss_rayleigh_db(wl):
     """
@@ -200,9 +204,9 @@ def loss_rayleigh_db(wl):
 
     See, eg. Argawal "Fiber-Optic Communication Systems" ch2
     """
-    factor = (1-0.14/(wl*1e-3)**4)
+    factor = 1 - 0.14 / (wl * 1e-3)**4
     factor[factor <= 0] = 1e-16
-    factor = -10*np.log10(factor)
+    factor = -10 * np.log10(factor)
     return factor
 
 
@@ -228,8 +232,72 @@ def max_peak_params(P, prominence):
     right_ind = results_fwhm[3][ind_max]
 
     return heigth_fwhm, fwhm, left_ind, right_ind
+
+
+def spectrum_width_params(P, prominence=0.0001):
+    """
+    :param power array *Unit: W*
+
+    :return:
+    param double power_max: maximum power *Unit: W*,
+    param double pulse_fwhm: FWHM *Unit: input arr indexes*,
+    param double left_ind, right_ind: interpolated positions of left and right intersection points of a FWHM line *Unit: input arr indexes*,
+    """
+
+    def find_x(y_peak, x_peak, is_left, ydata):
+        if is_left:
+            x = np.where(ydata < y_peak)[0]
+            filtered_x = x[np.where(x < x_peak)]
+            boundary = np.amax(filtered_x) if len(filtered_x) > 0 else 0
+        else:
+            x = np.where(ydata < y_peak)[0]
+            filtered_x = x[np.where(x > x_peak)]
+            boundary = np.amin(filtered_x) if len(filtered_x) > 0 else 0
+        return int(boundary)
+
+    peaks, _ = find_peaks(P, height=0, prominence=prominence)
+
+    if len(peaks) > 1:
+        heigth_fwhm = np.amax(P) / 10
+        peaks.sort()
+        left_ind = find_x(heigth_fwhm, peaks[0], True, P)
+        right_ind = find_x(heigth_fwhm, peaks[-1], False, P)
+        fwhm = right_ind - left_ind
+    elif len(peaks) == 0:
+        heigth_fwhm = None
+        left_ind = None
+        right_ind = None
+        fwhm = None
+    else:
+        results_fwhm = peak_widths(P, peaks, rel_height=0.5)
+        heigth_fwhm = np.amax(results_fwhm[1])
+        fwhm = results_fwhm[0][0]
+        left_ind = results_fwhm[2][0]
+        right_ind = results_fwhm[3][0]
+
+    return heigth_fwhm, fwhm, left_ind, right_ind
+
+
+def get_peaks(P):
+    peaks, _ = find_peaks(P, height=0, prominence=(np.amax(P) / 10))
+    return peaks
+
+
+def get_bandwidth(P, d_x, prominence=None):
+    if prominence is None:
+        prominence = np.amax(P) / 100
+    heigth_fwhm, fwhm, left_ind, right_ind = spectrum_width_params(P, prominence=prominence)
+    return abs(fwhm) * d_x
+
+
 def get_duration(P, d_x, prominence=None):
     if prominence is None:
         prominence = np.amax(P) / 100
     heigth_fwhm, fwhm, left_ind, right_ind = max_peak_params(P, prominence=prominence)
     return fwhm * d_x
+
+
+def get_downsampled(P, downsampling):
+    f = interp1d(np.arange(len(P)), P)
+    interpolated_P = f(np.linspace(0, len(P) - 1, downsampling))
+    return interpolated_P
