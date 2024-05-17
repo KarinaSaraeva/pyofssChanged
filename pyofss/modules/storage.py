@@ -1,5 +1,5 @@
 """
-    Copyright (C) 2012  David Bolt
+    Copyright (C) 2012  David Bolt, 2023 Vladislav Efremov
 
     This file is part of pyofss.
 
@@ -17,39 +17,12 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-from re import X
 import numpy as np
 import math
 from scipy.interpolate import interpn
 
-import os
-import warnings
-
 from pyofss import field
-from pyofss.field import temporal_power, spectral_power, energy, get_duration, get_duration_spec, get_peaks, get_downsampled
-
-from scipy.signal import find_peaks
-
-import pandas as pd
-
-
-class StorageError(Exception):
-    pass
-
-
-class DirExistenceError(StorageError):
-    pass
-
-
-class DifferentAxisError(StorageError):
-    pass
-
-class SavingWarning(Warning):
-    pass
-
-class InvalidArgumentError(StorageError):
-    """Raised when the type argument is not valid"""
-    pass
+from pyofss.field import temporal_power, spectral_power
 
 try:
     import pyopencl.array as pycl_array
@@ -111,30 +84,12 @@ def reduce_to_range(x, ys, first_value, last_value):
         print("Cannot reduce storage arrays unless last_value > first_value")
 
 
-def check_dir(dir_name):
-    if not os.path.exists(dir_name):
-        os.makedirs(dir_name)
-        print("Directory: ", dir_name, " is created!")
-    else:
-        if not os.listdir(dir_name):
-            print("Directory is empty")
-        else:
-            warnings.warn("Directory is not empty")
-
-
-def get_value_from_str(x):
-    if x == "None":
-        return None
-    else:
-        return float(x)
-
-
 class Storage(object):
     """
     Contains A arrays for multiple z values. Also contains t array and
     functions to modify the stored data.
     """
-    def __init__(self, length, traces, dir=None, cycle=None, fibre_name=None, f=None, downsampling=None):
+    def __init__(self, length, traces):
         self.length = length
         self.traces = traces
         self.trace_zs = []
@@ -144,19 +99,6 @@ class Storage(object):
             self.trace_zs = [length]
         else:
             self.trace_zs = np.linspace(0.0, self.length, self.traces + 1)
-
-        if dir is not None:
-            self.dir = dir
-            check_dir(self.dir)
-        else:
-            self.dir = None
-
-        self.f = f
-        self.cycle = cycle
-        self.fibre_name = fibre_name
-        self.downsampling = downsampling
-
-        self.plt_data = None
         self.trace_n = 0
         self.domain = None
         self.As = []
@@ -170,14 +112,6 @@ class Storage(object):
 
         # Accumulate number of fft and ifft operations used for a stepper run:
         self.fft_total = 0
-
-        self.energy_list = []
-        self.max_power_list = []
-        self.peaks_list = []
-        self.duration_list = []
-        self.spec_width_list = []
-        self.l_nl_list = []
-        self.l_d_list = []
 
     def reset_array(self):
         self.trace_n = 0
@@ -211,7 +145,6 @@ class Storage(object):
         if self.traces < 1:
             self.z.append(z)
             self.As.append(self.get_A(A))
-            self.update_characts(A)
         # Проверяем, совпадает ли текущая длина с точкой сохранения
         # если совпадает, сохраняем поле, переходим к следующей точке сохранения
         # и добавляем в буффер
@@ -220,7 +153,6 @@ class Storage(object):
 
             self.z.append(z)
             self.As.append(self.get_A(A))
-            self.update_characts(A)
 
             self.buff_z = [z]
             self.buff_As = [self.get_A(A)]
@@ -247,112 +179,8 @@ class Storage(object):
             self.buff_z.append(z)
             self.buff_As.append(self.get_A(A))
 
-    def update_characts(self, A):
-        """" 
-        :param array_like A: Field at distance z
-        
-        updates the list of pulse characteristics appending new items to the characteristics lists 
-        """
-        
-        self.energy_list.append(energy(A, self.domain.t))
-        temporal_power_arr = temporal_power(A)
-        spectral_power_arr = spectral_power(A)
-        self.max_power_list.append(np.amax(temporal_power_arr))
-        self.peaks_list.append(get_peaks(temporal_power_arr))
-        self.duration_list.append(get_duration(temporal_power_arr, self.domain.dt))
-        self.spec_width_list.append(get_duration_spec(spectral_power_arr, self.domain.dnu))
-        self.l_d_list.append(self.f.l_d(A))
-        self.l_nl_list.append(self.f.l_nl(A))
-
-    def save_all_storage_to_dir_as_df(
-        self,
-        save_power = True,
-        channel=None,
-    ):
-        """
-        :param boolean save_power: flag to save either the complex field as one dataframe or to save temporal and spectral intensity dataframes
-        
-        saves all field evolution along the fibre propagation 
-        """
-        if self.dir is not None:
-            if save_power:
-                dir_temp = os.path.join(dir, "temp")
-                dir_spec = os.path.join(dir, "spec")
-                check_dir(dir_temp)
-                check_dir(dir_spec)
-
-                df_temp = self.get_df("temp")
-                file_name_temp = os.path.join(dir_temp, f"{self.fibre_name}.csv")
-                df_temp.to_csv(file_name_temp)
-
-                df_spec = self.get_df("spec")
-                file_name_spec = os.path.join(dir_spec, f"{self.fibre_name}.csv")
-                df_spec.to_csv(file_name_spec)
-            else:
-                dir_complex = os.path.join(dir, "complex")
-                check_dir(dir_complex)
-                
-                df_complex = self.get_df("complex")
-                file_name_complex = os.path.join(dir_complex, f"{self.fibre_name}.csv")
-                df_complex.to_csv(file_name_complex)
-
-            file_name_info = os.path.join(self.dir, f"current_info.txt")
-
-            with open(file_name_info, 'w') as f:
-                f.write(f"current cycle: {self.cycle}, current fibre: {self.fibre_name}")
-        else:
-            warnings.warn("Nothing will be saved - the base fibre directory is not stated!", SavingWarning)
-
-    def get_df(self, type = "complex", z_curr=0, channel=None):
-        if type == "temp":
-            x, y, z = self.get_plot_data(is_temporal=True)
-        elif type == "spec":
-            x, y, z = self.get_plot_data(is_temporal=False)
-        elif type == "complex":
-            y = self.As
-            z = self.z
-        else:
-            raise InvalidArgumentError(f"{type} is not a valid argument, type param can be 'temp', 'spec' or 'complex'")
-
-        arr_z = np.array(z)*10**6 + z_curr # mm
-        if self.cycle and self.fibre_name is not None:
-            iterables = [[self.cycle], [self.fibre_name], arr_z]
-            index = pd.MultiIndex.from_product(
-                iterables,  names=["cycle", "fibre", "z [mm]"])
-        else:
-            iterables = [arr_z]
-            index = pd.MultiIndex.from_product(iterables, names=["z [mm]"])
-        return pd.DataFrame(y, index=index)
-    
-    def get_df_result(
-        self,
-        z_curr=0,
-    ):
-        z = self.z
-
-        arr_z = np.array(z)*10**6 + z_curr
-        characteristic = ["Peak Power [W]", "Energy [nJ]", "Temp width [ps]", "Spec width [THz]", "Dispersion length [km]", "Nonlinear length [km]", "Peaks [idx]"]
-        if self.cycle and self.fibre_name is not None:
-            iterables = [[self.cycle], [self.fibre_name], arr_z]
-            index = pd.MultiIndex.from_product(
-                iterables,  names=["cycle", "fibre", "z [mm]"])
-            
-        else:
-            iterables = [arr_z]
-            index = pd.MultiIndex.from_product(iterables, names=["z [mm]"])
-
-        df_results = pd.DataFrame(index=index, columns=characteristic)
-        df_results["Peak Power [W]"] = self.max_power_list
-        df_results["Energy [nJ]"] = self.energy_list
-        df_results["Temp width [ps]"] = self.duration_list
-        df_results["Spec width [THz]"] = self.spec_width_list
-        df_results["Peaks [idx]"] = self.peaks_list
-        df_results["Dispersion length [km]"] = self.l_d_list
-        df_results["Nonlinear length [km]"] = self.l_nl_list
-        return df_results
-
-    def get_plot_data(self, is_temporal=True, reduced_range=None,
-                      normalised=False, channel=None):
+    def get_plot_data(self, is_temporal=True, normalised=False,
+                      reduced_range=None, downsampled=None, channel=None):
         """
         :param bool is_temporal: Use temporal domain data (else spectral
                                  domain)
@@ -387,11 +215,11 @@ class Storage(object):
         if reduced_range is not None:
             x, y = reduce_to_range(x, y, reduced_range[0], reduced_range[1])
 
-        if self.downsampling is not None:
-            y = [get_downsampled(P, self.downsampling) for P in y]
+        if downsampled is not None:
+            x = get_downsampled(x, downsampled)
+            y = [get_downsampled(P, downsampled) for P in y]
 
         z = np.array(self.z)
-        self.plt_data = (x, y, z)
         return (x, y, z)
 
     @staticmethod

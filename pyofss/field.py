@@ -22,7 +22,6 @@ import numpy as np
 import scipy.fftpack
 import scipy.integrate as integrate
 from scipy.signal import find_peaks, peak_widths
-import scipy.integrate as integrate
 from scipy.interpolate import interp1d
 
 try:
@@ -193,7 +192,7 @@ def loss_infrared_db(wl):
     x = [1500, 1600, 1650, 1700, 1750, 1800] wavelengths
     y = [0.01, 0.05, 0.1, 0.3, 1, 2.5] losses in dB
     """
-    p = np.array([-1.75292532e03, 1.95607318e-02])
+    p = np.array([-1.75292532e+03, 1.95607318e-02])
     return np.exp(p[1] * (wl + p[0]))
 
 
@@ -204,7 +203,7 @@ def loss_rayleigh_db(wl):
 
     See, eg. Argawal "Fiber-Optic Communication Systems" ch2
     """
-    factor = 1 - 0.14 / (wl * 1e-3) ** 4
+    factor = 1 - 0.14 / (wl * 1e-3)**4
     factor[factor <= 0] = 1e-16
     factor = -10 * np.log10(factor)
     return factor
@@ -283,7 +282,7 @@ def get_peaks(P):
     return peaks
 
 
-def get_duration_spec(P, d_x, prominence=None):
+def get_bandwidth(P, d_x, prominence=None):
     if prominence is None:
         prominence = np.amax(P) / 100
     heigth_fwhm, fwhm, left_ind, right_ind = spectrum_width_params(P, prominence=prominence)

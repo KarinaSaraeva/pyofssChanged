@@ -47,7 +47,7 @@ from .modules.mirror import Mirror
 from .modules.delay import Delay
 from .modules.dispersion import Dispersion
 from .modules.static_pump_wdm import StaticPumpWDM
-from .modules.storage import Storage
+from .modules.collector import Collector
 from .modules.fibre_plotter import FibrePlotter, visualise_results_df, visualise_fields_df
 from .modules.noise import Noise
 
