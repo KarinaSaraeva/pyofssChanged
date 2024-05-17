@@ -77,13 +77,6 @@ OPENCL_OPERATIONS = Template("""
         field[gid] = c${dorf}_mul(field[gid], factor[gid]);
     }
 
-    __kernel void cl_linear_cached(__global c${dorf}_t* field,
-                                   __global c${dorf}_t* factor) {
-        int gid = get_global_id(0);
-
-        field[gid] = c${dorf}_mul(field[gid], factor[gid]);
-    }
-
     __kernel void cl_linear_cached_with_amplification(__global c${dorf}_t* field,
                                    __global c${dorf}_t* factor, __global ${dorf}* amp_factor) {
         int gid = get_global_id(0);
