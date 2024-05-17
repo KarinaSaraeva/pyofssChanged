@@ -1,4 +1,3 @@
-
 """
     Copyright (C) 2011, 2012  David Bolt, 2019-2020 Vlad Efremov, Denis Kharenko
 
@@ -21,30 +20,32 @@
 try:
     from pyfftw import byte_align
 except ImportError:
+
     def byte_align(v):
         return v
+
     pass
 
 
 import numpy as np
-
+import warnings
 from .domain import Domain
 
 
-def field_save(field, filename='field_out'):
+def field_save(field, filename="field_out"):
     np.savez_compressed(filename, field=field)
 
 
-def field_load(filename='field_out'):
+def field_load(filename="field_out"):
     if filename.endswith(".npz"):
-        d = np.load(filename)['field']
+        d = np.load(filename)["field"]
     elif filename.endswith(".npy"):
         d = np.load(filename)
     else:
         try:
-            d = np.load(filename + '.npz')['field']
+            d = np.load(filename + ".npz")["field"]
         except FileNotFoundError:
-            d = np.load(filename + '.npy')
+            d = np.load(filename + ".npy")
     return d
 
 
@@ -58,6 +59,7 @@ class System(object):
     domain and field as parameters. The result of each module call is stored
     in a dictionary.
     """
+
     def __init__(self, domain=Domain(), field=None):
         self.domain = domain
         self.field = None
@@ -73,7 +75,7 @@ class System(object):
         Clear contents of all fields.
         Clear (remove) all modules if requested.
         """
-        if(self.domain.channels > 1):
+        if self.domain.channels > 1:
             self.field = np.zeros(self.domain.total_samples*self.domain.channels, complex
                                   ).reshape(self.domain.channels, self.domain.total_samples)
         else:
@@ -81,33 +83,38 @@ class System(object):
 
         self.fields = {}
 
-        if(remove_modules):
+        if remove_modules:
             self.modules = []
 
     def add(self, module):
-        """ Append a module to the system. """
+        """Append a module to the system."""
+        for i, m in enumerate(self.modules):
+            if module.name == m.name:
+                warnings.warn(f"Module with the name '{m.name}' already exists")
         self.modules.append(module)
 
     def __getitem__(self, module_name):
         for index, module in enumerate(self.modules):
-            if(module.name == module_name):
+            if module.name == module_name:
                 return self.modules[index]
 
     def __setitem__(self, module_name, new_module):
         for index, module in enumerate(self.modules):
-            if(module.name == module_name):
+            if module.name == module_name:
                 self.modules[index] = new_module
                 return
 
         raise Exception("Tried to modify non-existing module in system")
 
-    def run(self):
+    def run(self, verbose=False):
         """
         Propagate field through each module, with the resulting field at the
         exit of each module stored in a dictionary, with module name as key.
         """
         self.field = byte_align(self.field)
         for module in self.modules:
+            if verbose:
+                print(f'call {module.name}...')
             self.field = module(self.domain, self.field)
             self.fields[module.name] = self.field
 
