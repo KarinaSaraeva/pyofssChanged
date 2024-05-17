@@ -103,7 +103,7 @@ class Collector(object):
     """
 
     def __init__(self, name="collector", system=None, module_names=(),
-                 charact_dir=None, save_represent="complex", downsampling=None,
+                 charact_dir=None, save_represent="complex", downsampled=None,
                  save_evolution=True, save_fields=False):
 
         self.name = name
@@ -119,7 +119,7 @@ class Collector(object):
             self.charact_dir = None
 
         self.cycle = 0
-        self.downsampling = downsampling
+        self.downsampled = downsampled
         self.save_evolution = save_evolution
         self.save_fields = save_fields
 
@@ -323,9 +323,9 @@ class Collector(object):
             raise InvalidArgumentError(f"{obj} is not a valid argument, obj param must be a Storage")
 
         if type == "temp":
-            x, y, z = obj.get_plot_data(is_temporal=True)
+            x, y, z = obj.get_plot_data(is_temporal=True, downsampled=self.downsampled)
         elif type == "spec":
-            x, y, z = odj.get_plot_data(is_temporal=False)
+            x, y, z = odj.get_plot_data(is_temporal=False, downsampled=self.downsampled)
         elif type == "complex":
             y = obj.As
             z = np.array(obj.z)

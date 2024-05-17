@@ -179,8 +179,8 @@ class Storage(object):
             self.buff_z.append(z)
             self.buff_As.append(self.get_A(A))
 
-    def get_plot_data(self, is_temporal=True, reduced_range=None,
-                      normalised=False, channel=None):
+    def get_plot_data(self, is_temporal=True, normalised=False,
+                      reduced_range=None, downsampled=None, channel=None):
         """
         :param bool is_temporal: Use temporal domain data (else spectral
                                  domain)
@@ -215,8 +215,11 @@ class Storage(object):
         if reduced_range is not None:
             x, y = reduce_to_range(x, y, reduced_range[0], reduced_range[1])
 
-        z = np.array(self.z)
+        if downsampled is not None:
+            x = get_downsampled(x, downsampled)
+            y = [get_downsampled(P, downsampled) for P in y]
 
+        z = np.array(self.z)
         return (x, y, z)
 
     @staticmethod
