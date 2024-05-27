@@ -1,6 +1,7 @@
 """
     Copyright (C) 2013 David Bolt,
-    2020-2021 Vladislav Efremov, Denis Kharenko
+    2020-2021, 2023 Vladislav Efremov, Denis Kharenko
+    2024 Karina Saraeva, Denis Kharenko
 
     This file is part of pyofss.
 
@@ -38,6 +39,7 @@ from string import Template
 
 from .linearity import Linearity
 from .nonlinearity import Nonlinearity
+from .storage import Storage
 from pyofss.modules.amplifier import AmplifierDistributed, Amplifier2LevelModel
 from pyofss.field import temporal_power, get_duration
 from scipy.signal import find_peaks, peak_widths
@@ -474,14 +476,11 @@ class OpenclFibre(object):
                  tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18,
                  small_signal_gain=None, E_sat=None, P_sat=None, Tr=None, lamb0=None, bandwidth=None, 
                  use_Er_profile=False, use_Er_noise=False, 
-                 use_Yb_model=False, Pp_0 = None, N = None, Rr=None, save_represent="power", cycle='cycle0', traces=None, dir=None, amplifier=None):
+                 use_Yb_model=False, Pp_0 = None, N = None, Rr=None, traces=1, amplifier=None):
         
         self.cl_programm = cl_programm
 
-        self.dir = dir
-
         self.name = name
-        self.cycle = cycle
         self.domain = None
 
         self.gamma = gamma
@@ -500,12 +499,34 @@ class OpenclFibre(object):
 
         self.length = length
         self.total_steps = total_steps
-        self.traces = traces if traces is not None else total_steps
 
         self.stepsize = self.length / self.total_steps
         self.zs = np.linspace(0.0, self.length, self.total_steps + 1)
 
-        self.method = getattr(self, method.lower())
+        # Use a list of tuples ( z, A(z) ) for dense output if required:
+        self.traces = traces
+        self.storage = Storage(self.length, self.traces)
+
+        # Check if adaptive stepsize is required:
+        if method.upper().startswith('A'):
+            self.adaptive = True
+            self.local_error = local_error
+            self.step_sizes = []
+            self.z_adapt = []
+            # Store constants for adaptive method:
+            self.total_attempts = 100
+            self.steps_max = 50000
+            self.step_size_min = 1e-37  # some small value
+            self.safety = 0.9
+            self.max_factor = 10.0
+            self.min_factor = 0.2
+            # Store local error of method:
+            self.eta = errors[method[1:].lower()]
+            self.method = getattr(self, method[1:].lower())
+            self.cl_linear = self.cl_linear_ad
+        else:
+            self.adaptive = False
+            self.method = getattr(self, method.lower())
 
         if self.use_all:
             if self_steepening is False:
@@ -670,21 +691,42 @@ class OpenclFibre(object):
             self.calculate_reference_length(field)
             if self.stepsize > self.reference_length * (10 ** (-2)):
                 warnings.warn(
-                    f"{self.cycle}: {self.name}: h must be much less than dispersion length (L_D) and the nonlinear length (L_NL)\n        \
+                    f"{WARN}: {self.name}: h must be much less than dispersion length (L_D) and the nonlinear length (L_NL)\n        \
                     now the minimum of the characteristic distances is equal to {self.reference_length:.6f}*km* \n         \
                     step is equal to {self.stepsize}*km*"
                 )
         if self.factor is None:
             self.factor = self.linearity(domain)
 
+        self.storage.domain = domain
+        self.storage.reset_fft_counter()
+        self.storage.reset_array()
+        # The first point is required for interpolation
+        self.storage.append(0.0, field)
+        
+        if self.amplifier:  # TODO retrieve the pump power from the spectral domain?
+            self.amplifier.init()
+
+        if self.adaptive:
+            raise NotImplementedError
+            #return self.adaptive_stepper(field)
+        else:
+            return self.standard_stepper(field)
+
+    def standard_stepper(self, field):
+        """ Take a fixed number of steps, each of equal length """
+        
         self.cl_programm.send_arrays_to_device(field, self.factor, self.h_R, self.nn_factor)
 
         storage_step = int(self.total_steps / self.traces)      
 
-        for i in range(len(self.zs[1:])):
+        for z in self.zs[:-1]:
             self.method(self.buf_field, self.buf_temp,
                           self.buf_interaction, self.buf_factor, self.stepsize)
+            self.storage.append(z + self.stepsize, self.buf_field)
+            
             # Storage part
+            ''' TODO, move this part into Storage
             if (i % storage_step == 0):
                 self.prg.cl_power(self.queue, self.shape, None, self.buf_field.data, self.power_buffer.data)
                 self.prg.cl_interpolate(self.queue, tuple([self.downsampled_power_buffer.shape[0]]), None, self.power_buffer.data, self.np_float(self.power_buffer.shape[0]), self.downsampled_power_buffer.data, self.np_float(self.downsampled_power_buffer.shape[0]))
@@ -702,10 +744,119 @@ class OpenclFibre(object):
                 # self.complex_field_list.append(self.buf_field.get())
                 self.z_list.append(self.zs[i+1])
                 self.compute_characts(self.buf_field)
+            '''
             
         # gpu memory should be cleared here manualy all needed info is already loaded
         # self.clear_arrays_on_device()
         return self.buf_field.get()
+
+    def adaptive_stepper(self, field):
+        #### Статья, где хорошо объясняется адпативный шаг, а также
+        #### исследуется его модифицированая версия:
+        #### DOI:10.1109/JLT.2009.2021538
+
+        # Constants used for approximation of solution using local
+        # extrapolation:
+        f_eta = np.power(2, self.eta - 1.0)
+        f_alpha = f_eta / (f_eta - 1.0)
+        f_beta = 1.0 / (f_eta - 1.0)
+        fh_eta = np.power(2, 1/self.eta)
+
+        z = 0.0
+        self.z_adapt.append(z)
+        h = self.stepsize
+
+        self.cl_programm.send_arrays_to_device(field, self.factor, self.h_R, self.nn_factor)
+
+        # Limit the number of steps in case of slowly converging runs:
+        for s in range(1, self.steps_max):
+            # If step-size takes z our of range [0.0, length], then correct it:
+            if (z + h) > self.length:
+                h = self.length - z
+
+            # Take an adaptive step:
+            for ta in range(0, self.total_attempts):
+                h_half = 0.5 * h
+                z_half = z + h_half
+
+                self.cl_copy(self.buf_fine, self.buf_field)
+
+                self.cl_copy(self.buf_coarse, self.buf_field)
+
+                # Calculate fine solution using two steps of size h_half:
+                self.cached_factor = False
+                self.method(self.buf_fine, self.buf_temp,
+                            self.buf_interaction, self.buf_factor, h_half)
+                self.method(self.buf_fine, self.buf_temp,
+                            self.buf_interaction, self.buf_factor, h_half)
+                # Calculate coarse solution using one step of size h:
+                self.cached_factor = False
+                self.method(self.buf_coarse, self.buf_temp,
+                            self.buf_interaction, self.buf_factor, h)
+
+                delta = self.relative_local_error(self.buf_fine, self.buf_coarse)
+
+                # Store current stepsize:
+                h_temp = h
+
+                # Adjust stepsize for next step:
+                if delta > 0.0:
+                    error_ratio = (self.local_error / delta)
+                    factr = \
+                        self.safety * np.power(error_ratio, 1.0 / self.eta)
+                    h = h_temp * min(self.max_factor,
+                                     max(self.min_factor, factr))
+                else:
+                    # Error approximately zero, so use largest stepsize
+                    # increase:
+                    h = h_temp * self.max_factor
+
+                if delta < 2.0 * self.local_error:
+                    # Successful step, so increment z h_temp (which is the
+                    # stepsize that was used for this step):
+                    z += h_temp
+
+                    self.buf_field = self.buf_fine.mul_add(f_alpha, self.buf_coarse, -f_beta)
+
+                    self.storage.append(z, self.buf_field)
+                    self.step_sizes.append(h_temp)
+                    self.z_adapt.append(z)
+
+                    break  # Successful attempt at step, move on to next step.
+
+                # Otherwise error was too large, continue with next attempt,
+                # but check the minimal step size first
+                else:
+                    # h = h_temp/2
+                    if h < self.step_size_min:
+                        raise SmallStepSizeError("Step size is extremely small")
+
+            else:
+                raise SuitableStepSizeError("Failed to set suitable step-size")
+
+            # If the desired z has been reached, then finish:
+            if z >= self.length:
+                return self.buf_field.get()
+
+        raise MaximumStepsAllocatedError("Failed to complete with maximum steps allocated")
+
+
+    def relative_local_error(self, A_fine, A_coarse):
+        """ Calculate an estimate of the relative local error """
+        self.prg.cl_norm(self.queue, self.shape, None,
+                                A_fine.data, self.err.data)
+
+        norm_fine = np.sqrt(np.real(cl_array.sum(self.err, queue=self.queue).get()))
+        A_rel = A_fine.mul_add(1.0, A_coarse, -1.0, queue=self.queue)
+        self.prg.cl_norm(self.queue, self.shape, None,
+                         A_rel.data, self.err.data)
+        norm_rel = np.sqrt(np.real(cl_array.sum(self.err, queue=self.queue).get()))
+
+        # Avoid possible divide by zero:
+        if norm_fine != 0.0:
+            return norm_rel / norm_fine
+        else:
+            return norm_rel
     
     def calculate_reference_length(self, field):
         self.L_D = self.get_dispersion_length(field)
@@ -727,53 +878,6 @@ class OpenclFibre(object):
         L_D =  abs(T_0**2 / (self.beta_2))
         return L_D
 
-    # for usual fibre this info is in storage
-    def get_df(self, type = "complex", z_curr=0, channel=None):
-        if type == "temp":
-            y = self.temp_field_list
-        elif type == "spec":
-            y = self.spec_field_list   
-        elif type == "complex":
-            warnings.warn("Saving downsampled complex power has not been made yet!")
-        else:
-            raise ValueError()
-         
-        arr_z = np.array(self.z_list)*10**6 + z_curr # mm
-        if self.cycle and self.name is not None:
-            iterables = [[self.cycle], [self.name], arr_z]
-            index = pd.MultiIndex.from_product(
-                iterables,  names=["cycle", "fibre", "z [mm]"])
-        else:
-            iterables = [arr_z]
-            index = pd.MultiIndex.from_product(iterables, names=["z [mm]"])
-        return pd.DataFrame(y, index=index)           
-
-    # for usual fibre this info is in storage
-    def get_df_result(
-        self,
-        z_curr=0,
-    ):
-        z = self.z_list
-
-        arr_z = np.array(z)*10**6 + z_curr
-        characteristic = ["Peak Power [W]", "Energy [nJ]", "Temp width [ps]", "Spec width [THz]", "Dispersion length [km]", "Nonlinear length [km]", "Peaks [idx]"]
-        if self.cycle and self.name is not None:
-            iterables = [[self.cycle], [self.name], arr_z]
-            index = pd.MultiIndex.from_product(
-                iterables,  names=["cycle", "fibre", "z [mm]"])
-        else:
-            iterables = [arr_z]
-            index = pd.MultiIndex.from_product(iterables, names=["z [mm]"])
-
-        df_results = pd.DataFrame(index=index, columns=characteristic)
-        df_results["Peak Power [W]"] = self.max_power_list
-        df_results["Energy [nJ]"] = self.energy_list
-        # df_results["Temp width [ps]"] = self.duration_list
-        # df_results["Spec width [THz]"] = self.spec_width_list
-        # df_results["Peaks [idx]"] = self.peaks_list
-        df_results["Dispersion length [km]"] = self.l_d_list
-        df_results["Nonlinear length [km]"] = self.l_nl_list
-        return df_results
 
     @staticmethod
     def print_device_info():

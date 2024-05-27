@@ -296,7 +296,7 @@ def get_duration(P, d_x, prominence=None):
     return fwhm * d_x
 
 
-def get_downsampled(P, downsampling):
+def get_downsampled(P, size):
     f = interp1d(np.arange(len(P)), P)
-    interpolated_P = f(np.linspace(0, len(P) - 1, downsampling))
+    interpolated_P = f(np.linspace(0, len(P) - 1, size))
     return interpolated_P

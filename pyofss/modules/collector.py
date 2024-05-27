@@ -36,6 +36,7 @@ except ImportError:
     OpenclFibre = None
 
 from .fibre import Fibre
+from .storage import Storage
 from ..field import energy, spectrum_width_params
 from scipy.signal import find_peaks
 
@@ -97,7 +98,7 @@ class Collector(object):
     :param array_like modules: A list of module names to save data from
     :param string charact_dir: Directory to save data
     :param string save_represent: Type of the data to be saved
-    :param int downsampling: the number of times by which you need to reduce the data
+    :param int downsampled: the number of point in which you need to represent the data
 
     Collector can be added to the system to collect data for multiple modules.
     """
@@ -118,7 +119,7 @@ class Collector(object):
         else:
             self.charact_dir = None
 
-        self.cycle = 0
+        self.cycle = None
         self.downsampled = downsampled
         self.save_evolution = save_evolution
         self.save_fields = save_fields
@@ -140,6 +141,9 @@ class Collector(object):
         self.z_curr = 0
 
     def __call__(self, domain, field):
+        if self.cycle is None:
+            self.cycle = 0
+
         for name in self.module_names:
             if isinstance(self.system[name], Collector):
                 print("Collector appears in the list to save, skipped...")
@@ -153,8 +157,6 @@ class Collector(object):
             self.update_fields_df(pd.DataFrame([self.system.fields[name]], index=index))
             if self.charact_dir is not None and self.save_fields:
                 self.save_fields_df_to_csv()
-
-        # INFO дублируется точка конца прошлого элемента и начала следующего
 
         if self.charact_dir and self.save_evolution:
             print("New characts are saved")
@@ -191,17 +193,17 @@ class Collector(object):
     def init_df(self, df_type="complex"):
         df = pd.DataFrame()
         z_curr = 0
-
+        
         for name in self.module_names:
             obj = self.system[name]
             if type(obj) is Fibre:
-                df_new = obj.stepper.storage.get_df(type=df_type, z_curr=z_curr)
+                df_new = self.get_df(obj.stepper.storage, obj, dtype=df_type, z_curr=z_curr)
                 # concatenate dataframes that were received from different fibres if not empty
                 if not df_new.empty:
                     z_curr = df_new.iloc[-1].name[-1]
                     df = pd.concat([df, df_new])
             if type(obj) is OpenclFibre:
-                df_new = obj.get_df(type=df_type, z_curr=z_curr)
+                df_new = self.get_df(obj.storage, obj, dtype=df_type, z_curr=z_curr)
                 # concatenate dataframes that were received from different fibres if not empty
                 if not df_new.empty:
                     z_curr = df_new.iloc[-1].name[-1]
@@ -318,23 +320,24 @@ class Collector(object):
         with open(file_name_info, 'w') as f:
             f.write(f"current cycle: {self.cycle}, current fibre: {obj.name}")
 
-    def get_df(self, obj, type="complex", z_curr=0, channel=None):
-        if not isinstance(obj, Storage):
-            raise InvalidArgumentError(f"{obj} is not a valid argument, obj param must be a Storage")
-
-        if type == "temp":
-            x, y, z = obj.get_plot_data(is_temporal=True, downsampled=self.downsampled)
-        elif type == "spec":
-            x, y, z = odj.get_plot_data(is_temporal=False, downsampled=self.downsampled)
-        elif type == "complex":
-            y = obj.As
-            z = np.array(obj.z)
+    def get_df(self, storage, obj, dtype="complex", z_curr=0, channel=None):
+        if not isinstance(storage, Storage):
+            raise InvalidArgumentError(f"{storage} is not a valid argument, storage param must be a Storage")
+        
+        if dtype == "temp":
+            x, y, z = storage.get_plot_data(is_temporal=True, downsampled=self.downsampled)
+        elif dtype == "spec":
+            x, y, z = storage.get_plot_data(is_temporal=False, downsampled=self.downsampled)
+        elif dtype == "complex":
+            y = storage.As
+            z = np.array(storage.z)
         else:
             raise InvalidArgumentError(f"{type} is not a valid argument, type param can be 'temp', 'spec' or 'complex'")
 
+        fibre_name = obj.name
         arr_z = z * 10**3 + z_curr  # meters
-        if self.cycle and self.fibre_name is not None:
-            iterables = [[self.cycle], [self.fibre_name], arr_z]
+        if self.cycle is not None and fibre_name is not None:
+            iterables = [[self.cycle], [fibre_name], arr_z]
             index = pd.MultiIndex.from_product(
                 iterables,  names=["cycle", "fibre", "z [m]"])
         else:
@@ -343,6 +346,8 @@ class Collector(object):
         return pd.DataFrame(y, index=index)
 
     def get_df_result_from_storage(self, storage, obj=None, z_curr=0):
+        if not isinstance(storage, Storage):
+            raise InvalidArgumentError(f"{storage} is not a valid argument, storage param must be a Storage")
         z = np.array(storage.z)
         fibre_name = obj.name
 
@@ -350,9 +355,14 @@ class Collector(object):
         characteristic = ["Peak Power [W]", "Energy [nJ]", "Temp width [ps]",
                           "Spec width [THz]", "Dispersion length [km]",
                           "Nonlinear length [km]", "Peaks [idx]"]
-        iterables = [[self.cycle], [fibre_name], arr_z]
-        index = pd.MultiIndex.from_product(
-            iterables,  names=["cycle", "fibre", "z [m]"])
+
+        if self.cycle is not None and fibre_name is not None:
+            iterables = [[self.cycle], [fibre_name], arr_z]
+            index = pd.MultiIndex.from_product(
+                iterables,  names=["cycle", "fibre", "z [m]"])
+        else:
+            iterables = [arr_z]
+            index = pd.MultiIndex.from_product(iterables, names=["z [m]"])
 
         self.clear_characts_lists()
         for i in range(len(z)):

@@ -31,6 +31,9 @@ import warnings
 class AmplifierBase(ABC):
     """ Base class for a distribured amplifier
     """
+    def init(self):
+        pass
+
     @abstractmethod
     def factor(self, A, h):
         pass
@@ -255,6 +258,7 @@ class Amplifier2LevelModel(AmplifierBase):
         self.NA = 0.13
         self.lamb_p = 976.0
         self.N = N * (1e25) * np.pi * self.a **2 # density per unit length
+        self._Pp_init = Pp
         self._Pp = Pp
         self.Tr = 1/Rr  # TODO check the units!
 
@@ -275,6 +279,12 @@ class Amplifier2LevelModel(AmplifierBase):
         self.np_float = float_conversions[dorf]
         self.physical_power_factor = None
 
+    def init(self):
+        self.reset_Pp()
+
+    def reset_Pp(self):
+        """Reset pump power to the initial value"""
+        self._Pp = self._Pp_init
 
     def prepare_arrays_on_device(self):
         self.spectral_power_buffer = cl_array.zeros(self.queue, self.shape, self.np_float)   

@@ -143,6 +143,9 @@ class Fibre(object):
                 step is equal to {h}*km*"
             )
 
+        if self.amplifier:  # TODO retrieve the pump power from the spectral domain?
+            self.amplifier.init()
+
         # Propagate field through fibre:
         return self.stepper(field, domain)
 

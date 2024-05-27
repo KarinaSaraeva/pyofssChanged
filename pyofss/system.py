@@ -70,6 +70,10 @@ class System(object):
         if field is not None:
             self.field = field
 
+    @property
+    def module_names(self):
+        return [m.name for m in self.modules]
+
     def clear(self, remove_modules=False):
         """
         Clear contents of all fields.

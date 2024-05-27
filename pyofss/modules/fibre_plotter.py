@@ -146,7 +146,7 @@ def visualise_fields_df(fields_df, y_arr, y_label="", y_lims=None, auto_lims=Fal
         fibre_names.sort()
         for j, fibre_name in enumerate(fibre_names):
             fibre_df = fields_df.loc[cycle_name].loc[fibre_name]
-            z = fibre_df.index.get_level_values('z [mm]').values
+            z = fibre_df.index.get_level_values('z [m]').values
             h = fibre_df.values.transpose()
 
             if auto_lims:
@@ -175,7 +175,7 @@ def visualise_fields_df(fields_df, y_arr, y_label="", y_lims=None, auto_lims=Fal
             cf = ax[i, j].pcolormesh(X, Y, h, shading='auto', cmap=plt.cm.get_cmap('plasma'), vmin=min_value, vmax=max_value)
             
             ax[i, j].set_ylabel(y_label)
-            ax[i, j].set_xlabel('z [mm]')
+            ax[i, j].set_xlabel('z [m]')
             if (len(cycle_names) > 1):
                 ax[i, j].set_title(f"{cycle_name}, {fibre_name}")
             else:
@@ -199,7 +199,7 @@ def visualise_results_df(df_results, figname=None, title=None):
     ncols = min(len_characts, 2)
     fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=(ncols*10,nrows*5))
 
-    z_arr = df_results.index.get_level_values("z [mm]").values
+    z_arr = df_results.index.get_level_values("z [m]").values
 
     for i, col_name in enumerate(df_results.columns):
         row = i // ncols
@@ -207,12 +207,12 @@ def visualise_results_df(df_results, figname=None, title=None):
 
         if col_name != "Peaks [idx]":
             axs[row, col].plot(z_arr, df_results[col_name])
-            axs[row, col].set_xlabel(f"z [mm]")
+            axs[row, col].set_xlabel(f"z [m]")
             axs[row, col].set_ylabel(f"{col_name}")
         else:
             peak_num_arr = df_results.loc[:, [col_name]].apply(len, axis=1).values
             axs[row, col].plot(z_arr, peak_num_arr)
-            axs[row, col].set_xlabel(f"z [mm]")
+            axs[row, col].set_xlabel(f"z [m]")
             axs[row, col].set_ylabel(f"{col_name}")
 
     if title is not None:
