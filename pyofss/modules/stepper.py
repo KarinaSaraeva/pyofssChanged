@@ -50,7 +50,6 @@ class Stepper(object):
     :param object f: Derivative function to be solved
     :param double length: Length to integrate over
     :param Uint total_steps: Number of steps to use for ODE integration
-    :param string save_represent: "power" or "complex" type of dataframe saved
 
     method:
       * EULER -- Euler method;
@@ -78,9 +77,10 @@ class Stepper(object):
     """
 
     def __init__(self, traces=1, local_error=1.0e-6, method="RK4",
-                 f=None, f_characts=None, length=1.0, total_steps=100):
+                 f=None, length=1.0, total_steps=100):
         self.traces = traces
         self.local_error = local_error
+
         # Check if adaptive stepsize is required:
         if method.upper().startswith('A'):
             self.adaptive = True
@@ -114,8 +114,7 @@ class Stepper(object):
         self.min_factor = 0.2
 
         # Store local error of method:
-        if (self.method.lower() != "step_amplifier"):
-            self.eta = self.solver.errors[self.method.lower()]
+        self.eta = self.solver.errors[self.method.lower()]
 
         self.A_out = None
 
@@ -132,7 +131,7 @@ class Stepper(object):
             return self.adaptive_stepper(A)
         else:
             return self.standard_stepper(A)
-        
+
     def standard_stepper(self, A):
         """ Take a fixed number of steps, each of equal length """
         #~print( "Starting ODE integration with fixed step-size... " ),
@@ -161,9 +160,7 @@ class Stepper(object):
         # Store total number of fft and ifft operations that were used:
         self.storage.store_current_fft_count()
 
-
         return self.A_out
-    
 
     @staticmethod
     def relative_local_error(A_fine, A_coarse):
@@ -278,13 +275,6 @@ class Stepper(object):
                 # Store total number of fft and ifft operations that were used:
                 self.storage.store_current_fft_count()
 
-                if (self.storage.dir_spec and self.storage.dir_temp):
-                    if (self.save_represent == "power"):
-                        self.storage.save_all_storage_to_dir_as_df(save_power=True)
-                    elif (self.save_represent == "complex"):
-                        self.storage.save_all_storage_to_dir_as_df(save_power=False)
-                    else:
-                        print(f"flag should be one of these: 'power', 'complex'") 
                 return self.A_out
 
         raise MaximumStepsAllocatedError("Failed to complete with maximum steps allocated")

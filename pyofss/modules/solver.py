@@ -53,7 +53,7 @@ class Solver(object):
     embedded_solvers = ["bs", "rkf", "ck", "dp"]
     ss_solvers = ["ss_simple", "ss_symmetric", "ss_reduced",
                   "ss_agrawal", "ss_sym_midpoint", "ss_sym_rk4"]
-    other_solvers = ["rk4ip", "step_amplifier"]
+    other_solvers = ["rk4ip", ]
 
     # For embedded methods, use local error of the lower order method:
     errors = {"euler": 2, "midpoint": 3, "rk4": 5,
@@ -266,11 +266,6 @@ class Solver(object):
         Y_2 = f.linear(A_N2, 0.5 * h)
 
         return Y_2
-    
-    @staticmethod
-    def step_amplifier(A, z, h, f):
-        A_L = f.amplifier_step(A, h)
-        return A_L
 
     def ss_sym_midpoint(self, A, z, h, f):
         """ Symmetric split-step method (midpoint method for nonlinear) """

@@ -155,10 +155,11 @@ class Linearity(object):
         return self.generate_linearity(domain)
 
     def default_linearity(self, domain):
-        # Calculate dispersive terms:
+        # Save domain for amplification
         if self.amplifier is not None:
             self.amplifier.set_domain(domain)
-            
+
+        # Calculate dispersive terms:
         if self.beta is None:
             self.factor = 0.0
         else:
@@ -230,10 +231,11 @@ class Linearity(object):
                               np.exp(hf1)]
 
     def cache(self, h):
-        #print("Caching linear factor")
+        print("Caching linear factor")
         self.generate_cache(h)
 
     def default_f(self, A, z):
+        # TODO no amplification here
         return ifft(self.factor * fft(A))
 
     def default_exp_f(self, A, h):
@@ -247,7 +249,7 @@ class Linearity(object):
             field = ifft(np.multiply(np.exp(amp_factor), np.exp(hf) * fft(A)))
             if self.use_Er_noise:
                 self.gain_arr.append(ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)]) # TODO: remove
-                noise = self.get_Er_noise(A, ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)])  
+                noise = self.get_Er_noise(A, ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)])
                 field += noise
             return field
     
@@ -261,22 +263,10 @@ class Linearity(object):
             field = ifft(np.multiply(np.exp(amp_factor), self.cached_factor * fft(A)))
             if self.use_Er_noise:
                 self.gain_arr.append(ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)]) # TODO: remove
-                noise = self.get_Er_noise(A, ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)])  
+                noise = self.get_Er_noise(A, ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)])
                 field += noise
             return field
-        
-    def amplification_step(self, A, h):
-        if self.amplifier is not None:
-            amp_factor = self.amplifier.factor(A, h)   
-            field = ifft(np.multiply(np.exp(amp_factor), fft(A)))
-            if self.use_Er_noise:
-                self.gain_arr.append(ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)]) # TODO: remove
-                noise = self.get_Er_noise(A, ifftshift(np.exp(2*amp_factor))[int(self.domain.Lambda.shape[0]/2)])  
-                field += noise
-            return field
-        else:
-            raise ValueError
-        
+
     def get_Er_noise(self, A, gain):
         # s_power = np.mean(temporal_power(A))
         plank = 6.626e-10; # [W*ps^2]
@@ -291,7 +281,6 @@ class Linearity(object):
         re_noise = np.random.normal(loc=0.0, scale=sigma, size=A.shape)
         im_noise = np.random.normal(loc=0.0, scale=sigma, size=A.shape)
         noise = re_noise + 1j * im_noise
-      
         return noise
 
     def wdm_f(self, As, z):

@@ -69,10 +69,9 @@ class Fibre(object):
 
     local_error: Relative local error to aim for between propagtion points.
     """
-
     def __init__(self, name="fibre", length=1.0, alpha=None,
                  beta=None, gamma=0.0, sim_type=None, traces=1,
-                 local_error=1.0e-6, method="ss_symmetric", total_steps=100,
+                 local_error=1.0e-6, method="RK4IP", total_steps=100,
                  self_steepening=False, raman_scattering=False,
                  rs_factor=0.003, use_all=False, centre_omega=None,
                  tau_1=12.2e-3, tau_2=32.0e-3, f_R=0.18, 
@@ -101,28 +100,20 @@ class Fibre(object):
                                          raman_scattering, rs_factor,
                                          use_all, tau_1, tau_2, f_R)
 
-        class FunctionStep():
+        class Function():
             """ Class to hold linear and nonlinear functions. """
-
-            def __init__(self, l, n, linear, nonlinear, amplifier_step):
+            def __init__(self, l, n, linear, nonlinear):
                 self.l = l
                 self.n = n
                 self.linear = linear
                 self.nonlinear = nonlinear
-                self.amplifier_step = amplifier_step
 
             def __call__(self, A, z):
                 return self.l(A, z) + self.n(A, z)
-            
-        class FunctionCharacts():
-            def __init__(self, l_d, l_nl):
-                self.l_d = l_d
-                self.l_nl = l_nl
 
-        self.function_step = FunctionStep(self.l, self.n, self.linear, self.nonlinear, self.amplifier_step)
-        self.function_characts = FunctionCharacts(self.get_dispersion_length, self.get_nonlinear_length)
+        self.function = Function(self.l, self.n, self.linear, self.nonlinear)
 
-        self.stepper = Stepper(traces, local_error, method, self.function_step, self.function_characts,
+        self.stepper = Stepper(traces, local_error, method, self.function,
                                self.length, total_steps)
 
     def __call__(self, domain, field):
@@ -134,14 +125,17 @@ class Fibre(object):
             self.domain = domain
 
         # Check relation between the step size and reference length
-        reflen = self.calculate_reference_length(field)
-        h = self.stepper.h
-        if h > reflen * 1e-2:
-            warnings.warn(
-                f"WARN: {self.name}: h must be much less than dispersion length (L_D) and the nonlinear length (L_NL)\n        \
-                now the minimum of the characteristic distances is equal to {reflen:.6f}*km* \n         \
-                step is equal to {h}*km*"
-            )
+        if not self.stepper.adaptive:
+            reflen = self.calculate_reference_length(field)
+            h = self.stepper.h
+            if h > reflen * 1e-2:
+                ld = self.get_dispersion_length(field)
+                ln = self.get_nonlinear_length(field)
+                warnings.warn(
+                    f"WARN: {self.name}: h must be much less than dispersion length (L_D={ld}) and the nonlinear length (L_NL={ln})\n        \
+                    now the minimum of the characteristic distances is equal to {reflen:.6f}*km* \n         \
+                    step is equal to {h}*km*"
+                )
 
         if self.amplifier:  # TODO retrieve the pump power from the spectral domain?
             self.amplifier.init()
@@ -164,9 +158,6 @@ class Fibre(object):
     def nonlinear(self, A, h, B):
         """ Nonlinear term in exponential factor. """
         return self.nonlinearity.exp_non(A, h, B)
-    
-    def amplifier_step(self, A, h):
-        return self.linearity.amplification_step(A, h)
 
     def calculate_reference_length(self, field):
         L_D = self.get_dispersion_length(field)
