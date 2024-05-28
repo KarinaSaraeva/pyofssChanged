@@ -124,7 +124,7 @@ def visualise_fields_df(fields_df, y_arr, y_label="", y_lims=None, auto_lims=Fal
 
     if max_value is None:
         max_value = fields_df.values.max()
-    if max_value is None:
+    if min_value is None:
         min_value = fields_df.values.min()
 
     nrows = int(np.ceil(len(cycle_names) / 2))
