@@ -22,7 +22,7 @@ import math
 from scipy.interpolate import interpn
 
 from pyofss import field
-from pyofss.field import temporal_power, spectral_power
+from pyofss.field import temporal_power, spectral_power, get_downsampled
 
 try:
     import pyopencl.array as pycl_array
@@ -98,7 +98,7 @@ class Storage(object):
         elif self.traces == 1:
             self.trace_zs = [length]
         else:
-            self.trace_zs = np.linspace(0.0, self.length, self.traces + 1)
+            self.trace_zs = np.linspace(0.0, self.length, self.traces + 1)[1:]
         self.trace_n = 0
         self.domain = None
         self.As = []
