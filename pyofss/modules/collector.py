@@ -193,7 +193,7 @@ class Collector(object):
     def init_df(self, df_type="complex"):
         df = pd.DataFrame()
         z_curr = 0
-        
+
         for name in self.module_names:
             obj = self.system[name]
             if type(obj) is Fibre:
@@ -323,7 +323,7 @@ class Collector(object):
     def get_df(self, storage, obj, dtype="complex", z_curr=0, channel=None):
         if not isinstance(storage, Storage):
             raise InvalidArgumentError(f"{storage} is not a valid argument, storage param must be a Storage")
-        
+
         if dtype == "temp":
             x, y, z = storage.get_plot_data(is_temporal=True, downsampled=self.downsampled)
         elif dtype == "spec":
@@ -381,29 +381,39 @@ class Collector(object):
 
 if __name__ == "__main__":
     from pyofss import Domain, System, Gaussian, Fibre, Collector
-    from pyofss import multi_plot, double_plot, labels
+    from pyofss import visualise_fields_df, get_downsampled
 
     import time
     import matplotlib.pyplot as plt
 
-    domain = Domain(bit_width=200.0, total_bits=8, samples_per_bit=512 * 32)
+    domain = Domain(bit_width=200.0, total_bits=8, samples_per_bit=512 * 8)
     gaussian = Gaussian(peak_power=1.0, width=1.0)
     beta = [0.0, 0.0, 1.0, 1.0]
+    plot_size = 500
 
     # Prepare an initial field
     sysinit = System(domain)
     sysinit.add(gaussian)
     sysinit.run()
 
-    # Make two roundtrips
+    # Prepare the system
     sys = System(domain, sysinit.field)
     sys.add(Fibre("f1", length=0.020, beta=beta, gamma=1.5, total_steps=20, traces=5))
     sys.add(Fibre("f2", length=0.020, beta=beta, gamma=1.5, total_steps=20, traces=5))
-    sys.add(Collector(system=sys, module_names=("f1", "f2"), charact_dir="testdir", save_represent="complex"))
+    sys.add(Collector(system=sys, module_names=("f1", "f2"), downsampled=plot_size,
+                      charact_dir="testdir", save_represent="complex"))
 
+    # Make two roundtrips
     start = time.time()
     sys.run()
     sys.run()
     stop = time.time()
 
     print(f"Run time: {stop-start}")
+
+    # Visualise results
+    visualise_fields_df(sys["collector"].df_temp, get_downsampled(domain.t, plot_size), "t [ps]", (-10, 10))
+    plt.show()
+    
+    visualise_fields_df(sys["collector"].df_spec, get_downsampled(domain.Lambda, plot_size), "lambda [nm]", (1500, 1600))
+    plt.show()
