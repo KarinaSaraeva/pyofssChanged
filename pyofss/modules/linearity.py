@@ -222,6 +222,7 @@ class Linearity(object):
         self.generate_cache(h)
 
     def default_f(self, A, z):
+        # TODO no amplification here
         return ifft(self.factor * fft(A))
 
     def default_exp_f(self, A, h):

@@ -75,6 +75,7 @@ class Stepper(object):
       * >1 -- Store A for each succesful step then use interpolation to get A
          values for equally spaced z-values, calculated using traces.
     """
+
     def __init__(self, traces=1, local_error=1.0e-6, method="RK4",
                  f=None, length=1.0, total_steps=100):
         self.traces = traces
