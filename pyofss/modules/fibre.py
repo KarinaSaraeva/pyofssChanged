@@ -154,7 +154,7 @@ class Fibre(object):
         beta = self.linearity.beta
         beta_2 = beta[2] if beta is not None else None
         T_0 = get_duration(temporal_power(field), self.domain.dt)
-        L_D =  T_0**2 / abs(beta_2)
+        L_D = T_0**2 / abs(beta_2)
         return L_D
 
 

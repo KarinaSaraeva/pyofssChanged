@@ -24,8 +24,6 @@ import numpy as np
 import pyopencl as cl
 import pyopencl.array as cl_array
 
-from scipy import linalg
-
 import sys as sys0
 version_py = sys0.version_info[0]
 if version_py == 3:
@@ -361,8 +359,6 @@ class OpenclFibre(object):
 
         self.use_all = use_all
 
-        self.gamma = gamma
-
         self.nn_factor = None
         self.buf_nn_factor = None
         self.h_R = None
@@ -639,6 +635,29 @@ class OpenclFibre(object):
         else:
             return norm_rel
 
+    def calculate_reference_length(self, field):  # TODO, inherit from Fibre
+        L_D = self.get_dispersion_length(field)
+        L_NL = self.get_nonlinear_length(field)
+        if (L_NL is not None) and (L_D is not None):
+            return min(L_NL, L_D)
+        elif (L_NL is None) and (L_D is None):
+            return None
+        else:
+            return L_NL if L_D is None else L_D
+
+    def get_nonlinear_length(self, field):
+        P_0 = np.amax(temporal_power(field))  # TODO, use CL functions
+        L_NL = 1 / (self.nonlinearity.gamma * P_0)
+        return L_NL
+
+    def get_dispersion_length(self, field):
+        beta = self.linearity.beta
+        beta_2 = beta[2] if beta is not None else None
+        T_0 = get_duration(temporal_power(field), self.domain.dt)
+        L_D = T_0**2 / np.abs(beta_2)
+        return L_D
+
+
     @staticmethod
     def print_device_info():
         """ Output information on each OpenCL platform and device. """
@@ -745,12 +764,12 @@ class OpenclFibre(object):
     def cl_n_default(self, field_buffer, stepsize):
         """ Nonlinear part of step. """
         self.prg.cl_nonlinear(self.queue, self.shape, None, field_buffer.data,
-                              self.np_float(self.gamma), self.np_float(stepsize))
+                              self.np_float(self.nonlinearity.gamma), self.np_float(stepsize))
     
     def cl_nonlinear(self, fieldA_buffer, stepsize, fieldB_buffer):
         """ Nonlinear part of step, exponential term"""
         self.prg.cl_nonlinear_exp(self.queue, self.shape, None, fieldA_buffer.data, fieldB_buffer.data,
-                                  self.np_float(self.gamma), self.np_float(stepsize))
+                                  self.np_float(self.nonlinearity.gamma), self.np_float(stepsize))
 
     def cl_n_with_all_and_ss(self, field_buffer, stepsize):
         """ Nonlinear part of step with self_steepening and raman """
@@ -774,7 +793,7 @@ class OpenclFibre(object):
 
         # A_out = ifft( factor*(1 + omega*ss_factor)*p)
         self.prg.cl_nonlinear_with_all_st2_with_ss(self.queue, self.shape, None, field_buffer.data,
-                              self.buf_nn_factor.data, self.np_float(self.gamma))
+                              self.buf_nn_factor.data, self.np_float(self.nonlinearity.gamma))
         self.plan.execute(field_buffer.data)
 
         self.prg.cl_step_mul(self.queue, self.shape, None,
@@ -802,7 +821,7 @@ class OpenclFibre(object):
 
         # A_out = factor*p
         self.prg.cl_nonlinear_with_all_st2_without_ss(self.queue, self.shape, None, field_buffer.data,
-                                                  self.np_float(self.gamma))
+                                                  self.np_float(self.nonlinearity.gamma))
 
         self.prg.cl_step_mul(self.queue, self.shape, None,
                              field_buffer.data, self.np_float(stepsize))
